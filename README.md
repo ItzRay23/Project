@@ -15,21 +15,19 @@ A basic pygame project structure with player, enemy, and level management.
 ### Player Class
 
 - WASD or arrow key movement
-- Health system with visual health bar
+- Health system with hearts as HP
 - Collision detection
 - Screen boundary constraints
 
 ### Enemy Class
 
-- Multiple enemy types (basic, fast, tank)
-- AI movement with random direction changes
-- Health system with visual health bars
+- Multiple enemy types (basic, jumping, ambush)
+- Health system with visual indicator
 - Screen boundary collision
 
 ### Level Class
 
 - Dynamic background colors based on level
-- Procedurally generated obstacles and decorations
 - Level progression system
 - Spawn position management
 
@@ -59,18 +57,6 @@ A basic pygame project structure with player, enemy, and level management.
 - Health bars appear above entities when damaged
 - Level number is displayed in the top-left corner
 
-## Extending the Game
-
-This structure provides a solid foundation for adding:
-
-- Projectiles/shooting system
-- Power-ups and items
-- Sound effects and music
-- More complex AI behaviors
-- Multiple levels with different themes
-- Game states (menu, pause, game over)
-- Scoring system
-
 ## Development Environment
 
-The project is set up with a Python virtual environment in `.venv/` with pygame installed.
+The project is set up with a Python virtual environment in `.venv/` with pygame installed
