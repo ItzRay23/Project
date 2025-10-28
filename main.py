@@ -5,8 +5,9 @@ This file handles the main game loop and coordinates all game components.
 
 import pygame
 import sys
+import random
 from player import Player
-from enemy import Enemy
+from enemy import BasicEnemy, JumpingEnemy, AmbushEnemy
 from level import Level
 
 class Game:
@@ -30,27 +31,39 @@ class Game:
         self.running = True
         self.game_over = False
         
-        # Initialize game objects
-        self.level = Level(1)
-        self.player = Player(100, self.SCREEN_HEIGHT - 150)  # Start on ground
+        # Initialize game objects (load level from CSV)
+        self.level = Level("levels/level1.csv", tile_size=64)
+        # Start player near the left side on top of the first available ground
+        start_x = 100
+        start_y = self.level.height - 150
+        self.player = Player(start_x, start_y)
         self.enemies = pygame.sprite.Group()
-        
+
         # Camera system
         self.camera_x = 0
         self.camera_y = 0
-        
+
         # Create enemies on platforms
         self.spawn_enemies()
-        
+
         # Font for UI
         self.font = pygame.font.Font(None, 36)
     
     def spawn_enemies(self):
-        """Spawn enemies on platforms."""
+        """Spawn enemies based on CSV spawn markers."""
         spawn_positions = self.level.get_enemy_spawn_positions()
         
-        for pos in spawn_positions[:3]:  # Limit to 3 enemies
-            enemy = Enemy(pos['x'], pos['y'], pos['patrol_start'], pos['patrol_end'])
+        # Map enemy type strings to classes
+        enemy_class_map = {
+            'basic': BasicEnemy,
+            'jumping': JumpingEnemy,
+            'ambush': AmbushEnemy
+        }
+        
+        for spawn in spawn_positions:
+            enemy_type = spawn.get('type', 'basic')  # Default to basic if type missing
+            enemy_class = enemy_class_map.get(enemy_type, BasicEnemy)
+            enemy = enemy_class(spawn['x'], spawn['y'])
             self.enemies.add(enemy)
     
     def handle_events(self):
@@ -72,15 +85,19 @@ class Game:
         # Get pressed keys for continuous input
         keys = pygame.key.get_pressed()
         
-        # Get platforms for collision detection
-        platforms = self.level.get_platforms()
-        
-        # Update player
-        self.player.update(keys, platforms, self.SCREEN_WIDTH, self.SCREEN_HEIGHT)
-        
+        # Get platforms for collision detection (solid, one-way)
+        solid_tiles, one_way_tiles = self.level.get_platforms()
+
+        # Update player (pass level pixel bounds)
+        self.player.update(keys, solid_tiles, one_way_tiles, self.level.width, self.level.height)
+
         # Update enemies
+        player_pos = self.player.get_position()
         for enemy in self.enemies:
-            enemy.update(platforms, self.SCREEN_HEIGHT)
+            if isinstance(enemy, AmbushEnemy):
+                enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width, player_pos)
+            else:
+                enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width)
         
         # Update level
         self.level.update()
@@ -91,6 +108,13 @@ class Game:
             if enemy.active and player_rect.colliderect(enemy.get_rect()):
                 self.player.take_damage(1)
                 break  # Only take damage from one enemy per frame
+
+        # Check collectible pickups
+        for item in self.level.collectibles:
+            if not item['collected'] and player_rect.colliderect(item['rect']):
+                item['collected'] = True
+                # You can add effects here (score/heal). For now, print and mark.
+                print("Collected an item!")
         
         # Update camera to follow player
         self.update_camera()
@@ -128,6 +152,12 @@ class Game:
         # Draw game over screen if needed
         if self.game_over:
             self.draw_game_over()
+        else:
+            # Draw collectibles HUD
+            total = len(self.level.collectibles)
+            collected = sum(1 for it in self.level.collectibles if it['collected'])
+            hud_text = self.font.render(f"Collected: {collected}/{total}", True, (255, 255, 255))
+            self.screen.blit(hud_text, (10, 40))
         
         # Update display
         pygame.display.flip()
@@ -154,7 +184,9 @@ class Game:
         """Restart the game."""
         self.game_over = False
         self.player.reset_position(100, self.SCREEN_HEIGHT - 150)
-        
+        # Reload level to reset collectibles
+        self.level.load_from_csv(self.level.csv_path)
+
         # Clear and respawn enemies
         self.enemies.empty()
         self.spawn_enemies()

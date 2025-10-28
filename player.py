@@ -42,14 +42,22 @@ class Player(pygame.sprite.Sprite):
         self.invulnerable_time = 0
         self.invulnerable_duration = 1000  # 1 second in milliseconds
     
-    def update(self, keys, platforms, screen_width, screen_height):
-        """Update player position and state."""
+    def update(self, keys, solid_tiles, one_way_tiles, level_width, level_height):
+        """Update player position and state.
+
+        solid_tiles: list of Rect that are full solid (ground)
+        one_way_tiles: list of Rect that are one-way platforms (collide only when falling)
+        level_width/level_height: pixel bounds of the level for camera/clamp
+        """
         # Handle invulnerability timer
         if self.invulnerable:
             current_time = pygame.time.get_ticks()
             if current_time - self.invulnerable_time > self.invulnerable_duration:
                 self.invulnerable = False
-        
+
+        # Remember previous position for one-way checks
+        prev_rect = self.rect.copy()
+
         # Reset horizontal velocity
         self.velocity_x = 0
         
@@ -73,42 +81,59 @@ class Player(pygame.sprite.Sprite):
         
         # Move horizontally and check collisions
         self.rect.x += self.velocity_x
-        self.check_horizontal_collisions(platforms, 2400)  # Use level width instead of screen width
-        
+        # horizontal collisions against both solid and one-way platforms
+        self.check_horizontal_collisions(solid_tiles + one_way_tiles)
+
         # Move vertically and check collisions
         self.rect.y += self.velocity_y
-        self.check_vertical_collisions(platforms, screen_height)
-        
-        # Keep player within level bounds horizontally
-        self.rect.x = max(0, min(self.rect.x, 2400 - self.width))  # Use level width
+        self.check_vertical_collisions(solid_tiles, one_way_tiles, prev_rect, level_height)
+
+        # Keep player within level bounds horizontally and vertically
+        self.rect.x = max(0, min(self.rect.x, level_width - self.width))
+        self.rect.y = max(0, min(self.rect.y, level_height - self.height))
     
-    def check_horizontal_collisions(self, platforms, screen_width):
-        """Check for horizontal collisions with platforms."""
-        for platform in platforms:
-            if self.rect.colliderect(platform):
+    def check_horizontal_collisions(self, tiles):
+        """Check for horizontal collisions with tiles (solid or platforms)."""
+        for tile in tiles:
+            if self.rect.colliderect(tile):
                 if self.velocity_x > 0:  # Moving right
-                    self.rect.right = platform.left
+                    self.rect.right = tile.left
                 elif self.velocity_x < 0:  # Moving left
-                    self.rect.left = platform.right
+                    self.rect.left = tile.right
     
-    def check_vertical_collisions(self, platforms, screen_height):
-        """Check for vertical collisions with platforms."""
+    def check_vertical_collisions(self, solid_tiles, one_way_tiles, prev_rect, level_height):
+        """Vertical collision resolving.
+
+        - Solid tiles (ground) always block both up and down.
+        - One-way tiles only block when falling (velocity_y > 0) and the player's previous bottom was <= tile.top
+        """
         self.on_ground = False
-        
-        for platform in platforms:
-            if self.rect.colliderect(platform):
-                if self.velocity_y > 0:  # Falling down
-                    self.rect.bottom = platform.top
+
+        # First check collisions with solid tiles
+        for tile in solid_tiles:
+            if self.rect.colliderect(tile):
+                if self.velocity_y > 0:  # falling
+                    self.rect.bottom = tile.top
                     self.velocity_y = 0
                     self.on_ground = True
                     self.can_jump = True
-                elif self.velocity_y < 0:  # Jumping up
-                    self.rect.top = platform.bottom
+                elif self.velocity_y < 0:  # moving up
+                    self.rect.top = tile.bottom
                     self.velocity_y = 0
-        
-        # Check ground collision
-        if self.rect.bottom >= screen_height - 50:  # Ground level
-            self.rect.bottom = screen_height - 50
+
+        # Then check one-way platforms: only when falling and crossing from above
+        for tile in one_way_tiles:
+            if self.rect.colliderect(tile):
+                # Only if moving downwards and previous bottom was above the platform top
+                if self.velocity_y > 0 and prev_rect.bottom <= tile.top:
+                    self.rect.bottom = tile.top
+                    self.velocity_y = 0
+                    self.on_ground = True
+                    self.can_jump = True
+
+        # Clamp to level bottom
+        if self.rect.bottom >= level_height:
+            self.rect.bottom = level_height
             self.velocity_y = 0
             self.on_ground = True
             self.can_jump = True

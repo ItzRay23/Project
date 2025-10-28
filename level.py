@@ -4,106 +4,143 @@ Handles level generation, background, obstacles, and progression.
 """
 
 import pygame
+import csv
+import os
 import random
 
+
 class Level:
-    def __init__(self, level_number=1):
-        """Initialize the level."""
-        self.level_number = level_number
-        self.background_color = (135, 206, 235)  # Sky blue background
-        
-        # Level dimensions (make it much longer for scrolling)
-        self.width = 2400  # 3x longer than screen width
-        self.height = 600
-        self.ground_height = 50
-        
-        # Platforms
-        self.platforms = []
+    """Tile-based level loaded from a CSV.
+
+    CSV tile codes:
+    . -> empty
+    G -> ground (solid, full collision)
+    P -> platform (one-way: collides only from above)
+    C -> collectible (placed on top of tile)
+    B -> BasicEnemy spawn point
+    J -> JumpingEnemy spawn point
+    A -> AmbushEnemy spawn point
+
+    The level is a grid of tiles. Tile size can be adjusted using `tile_size`.
+    """
+
+    def __init__(self, csv_path="levels/level1.csv", tile_size=64):
+        self.csv_path = csv_path
+        self.tile_size = tile_size
+        self.background_color = (135, 206, 235)  # Sky blue
+
+        # Storage for tiles
+        self.tiles = []  # 2D list of tile codes
+        self.solid_tiles = []  # list of pygame.Rect for G (ground)
+        self.one_way_tiles = []  # list of pygame.Rect for P (platform)
+        self.collectibles = []  # list of dicts: {'rect': Rect, 'collected': False}
+        self.enemy_spawns = []  # list of dicts: {'x': x, 'y': y, 'type': enemy_type}
+
+        # Level pixel dimensions (computed after loading CSV)
+        self.width = 0
+        self.height = 0
+
+        # Load CSV and build tile lists
+        self.load_from_csv(self.csv_path)
+
+        # Decorations (clouds/grass) are optional
         self.decorations = []
-        
-        # Generate level content
-        self.generate_platforms()
         self.generate_decorations()
     
-    def generate_platforms(self):
-        """Generate Mario-style platforms for the level."""
-        self.platforms = []
-        
-        # Ground platform (full width)
-        ground = pygame.Rect(0, self.height - self.ground_height, self.width, self.ground_height)
-        self.platforms.append(ground)
-        
-        # Add floating platforms across the longer level
-        platform_data = [
-            # First section (0-800)
-            (200, 450, 120, 20),   # Low platform
-            (400, 350, 100, 20),   # Mid platform
-            (150, 250, 80, 20),    # High platform left
-            (550, 200, 100, 20),   # High platform right
-            (350, 150, 60, 20),    # Very high platform
-            (600, 400, 80, 20),    # Another low platform
-            (50, 350, 100, 20),    # Left side platform
-            (650, 300, 120, 20),   # Right side platform
-            
-            # Second section (800-1600)
-            (900, 400, 100, 20),   # Entry platform
-            (1100, 300, 120, 20),  # Mid platform
-            (850, 200, 80, 20),    # High left
-            (1250, 250, 100, 20),  # High right
-            (1000, 150, 60, 20),   # Very high
-            (1400, 450, 150, 20),  # Long low platform
-            (1200, 100, 80, 20),   # Very high platform
-            (1500, 350, 100, 20),  # End section platform
-            
-            # Third section (1600-2400)
-            (1700, 400, 120, 20),  # Entry platform
-            (1900, 300, 100, 20),  # Mid platform
-            (1650, 200, 80, 20),   # High left
-            (2050, 250, 120, 20),  # High right
-            (1800, 150, 60, 20),   # Very high
-            (2200, 400, 100, 20),  # Low platform
-            (2000, 100, 80, 20),   # Very high platform
-            (2300, 350, 90, 20),   # Final platform
-        ]
-        
-        for x, y, width, height in platform_data:
-            platform = pygame.Rect(x, y, width, height)
-            self.platforms.append(platform)
+    def load_from_csv(self, csv_path):
+        """Load the tile grid from a CSV file.
+
+        Each row in the CSV is a row of tiles. Files should be stored in `levels/`.
+        """
+        # Clear previous
+        self.tiles = []
+        self.solid_tiles = []
+        self.one_way_tiles = []
+        self.collectibles = []
+        self.enemy_spawns = []
+
+        # Allow relative path
+        base = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base, csv_path)
+
+        if not os.path.exists(full_path):
+            # If CSV is missing, create a very small default flat level
+            cols = 40
+            rows = 10
+            for r in range(rows):
+                row = ['.'] * cols
+                if r == rows - 1:
+                    row = ['G'] * cols
+                self.tiles.append(row)
+        else:
+            with open(full_path, newline='') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    # strip spaces
+                    self.tiles.append([cell.strip() for cell in row])
+
+        # Compute grid and pixel dimensions
+        self.rows = len(self.tiles)
+        self.cols = max((len(r) for r in self.tiles), default=0)
+
+        # Pad shorter rows with empty tiles so the grid is rectangular
+        for r in self.tiles:
+            if len(r) < self.cols:
+                r.extend(['.'] * (self.cols - len(r)))
+
+        # Update pixel dimensions from grid size
+        self.width = self.cols * self.tile_size
+        self.height = self.rows * self.tile_size
+
+        # Build rect lists
+        for r_index, row in enumerate(self.tiles):
+            for c_index, code in enumerate(row):
+                x = c_index * self.tile_size
+                y = r_index * self.tile_size
+                if code == 'G':
+                    rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                    self.solid_tiles.append(rect)
+                elif code == 'P':
+                    # Make platforms thin - only 8 pixels thick at the top
+                    platform_thickness = 8
+                    rect = pygame.Rect(x, y, self.tile_size, platform_thickness)
+                    self.one_way_tiles.append(rect)
+                elif code == 'C':
+                    # collectible sits centered on tile
+                    rect = pygame.Rect(x + self.tile_size//4, y + self.tile_size//4,
+                                       self.tile_size//2, self.tile_size//2)
+                    self.collectibles.append({'rect': rect, 'collected': False})
+                elif code == 'B':
+                    # BasicEnemy spawn point
+                    spawn_x = x + self.tile_size // 2
+                    spawn_y = y + self.tile_size // 2
+                    self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'basic'})
+                elif code == 'J':
+                    # JumpingEnemy spawn point
+                    spawn_x = x + self.tile_size // 2
+                    spawn_y = y + self.tile_size // 2
+                    self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'jumping'})
+                elif code == 'A':
+                    # AmbushEnemy spawn point
+                    spawn_x = x + self.tile_size // 2
+                    spawn_y = y + self.tile_size // 2
+                    self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'ambush'})
     
     def generate_decorations(self):
-        """Generate decorative elements for the level."""
+        """Generate simple clouds and grass decorations."""
         self.decorations = []
-        
-        # Generate clouds in the background
         num_clouds = random.randint(3, 6)
-        
         for i in range(num_clouds):
-            x = random.randint(0, self.width - 80)
+            x = random.randint(0, max(0, self.width - 80))
             y = random.randint(50, 200)
             size = random.randint(30, 60)
-            
-            decoration = {
-                'pos': (x, y),
-                'size': size,
-                'color': (255, 255, 255),
-                'type': 'cloud'
-            }
-            
+            decoration = {'pos': (x, y), 'size': size, 'color': (255, 255, 255), 'type': 'cloud'}
             self.decorations.append(decoration)
-        
-        # Generate some grass decorations on platforms
-        for platform in self.platforms[1:]:  # Skip ground platform
-            if random.random() < 0.7:  # 70% chance to have grass
-                grass_x = platform.x + random.randint(0, max(1, platform.width - 20))
-                grass_y = platform.y - 8
-                
-                decoration = {
-                    'pos': (grass_x, grass_y),
-                    'size': 8,
-                    'color': (34, 139, 34),
-                    'type': 'grass'
-                }
-                
+
+        # Small grass decorations above solid tiles
+        for rect in self.solid_tiles:
+            if random.random() < 0.2:
+                decoration = {'pos': (rect.x + 8, rect.y - 8), 'size': 6, 'color': (34, 139, 34), 'type': 'grass'}
                 self.decorations.append(decoration)
     
     def update(self):
@@ -116,78 +153,61 @@ class Level:
         """Draw the level to the screen with camera offset."""
         # Draw background
         screen.fill(self.background_color)
-        
-        # Draw decorations with camera offset
+
+        # Decorations
         for decoration in self.decorations:
             pos_x, pos_y = decoration['pos']
-            # Only draw if visible on screen
-            if pos_x - camera_x >= -50 and pos_x - camera_x <= 850:
-                if decoration['type'] == 'cloud':
-                    # Draw simple cloud shape
-                    size = decoration['size']
-                    color = decoration['color']
-                    screen_x = pos_x - camera_x
-                    screen_y = pos_y - camera_y
-                    
-                    # Main cloud body
-                    pygame.draw.circle(screen, color, (screen_x + size//2, screen_y + size//3), size//3)
-                    pygame.draw.circle(screen, color, (screen_x + size//4, screen_y + size//2), size//4)
-                    pygame.draw.circle(screen, color, (screen_x + size*3//4, screen_y + size//2), size//4)
-                    
-                elif decoration['type'] == 'grass':
-                    # Draw simple grass
-                    color = decoration['color']
-                    screen_x = pos_x - camera_x
-                    screen_y = pos_y - camera_y
-                    for i in range(3):
-                        pygame.draw.line(screen, color, 
-                                       (screen_x + i*3, screen_y), 
-                                       (screen_x + i*3, screen_y - 5), 2)
+            screen_x = pos_x - camera_x
+            screen_y = pos_y - camera_y
+            if decoration['type'] == 'cloud':
+                size = decoration['size']
+                pygame.draw.circle(screen, decoration['color'], (screen_x + size//2, screen_y + size//3), size//3)
+                pygame.draw.circle(screen, decoration['color'], (screen_x + size//4, screen_y + size//2), size//4)
+                pygame.draw.circle(screen, decoration['color'], (screen_x + size*3//4, screen_y + size//2), size//4)
+            elif decoration['type'] == 'grass':
+                for i in range(3):
+                    pygame.draw.line(screen, decoration['color'], (screen_x + i*3, screen_y), (screen_x + i*3, screen_y - 5), 2)
+
+        # Draw tiles (solid ground and one-way platforms)
+        for rect in self.solid_tiles:
+            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
+                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+                pygame.draw.rect(screen, (139, 69, 19), screen_rect)
+                grass_rect = pygame.Rect(screen_rect.x, screen_rect.y, screen_rect.width, 4)
+                pygame.draw.rect(screen, (34, 139, 34), grass_rect)
+
+        for rect in self.one_way_tiles:
+            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
+                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+                pygame.draw.rect(screen, (160, 82, 45), screen_rect)
+                pygame.draw.rect(screen, (101, 67, 33), screen_rect, 2)
+
+        # Draw collectibles
+        for item in self.collectibles:
+            if item['collected']:
+                continue
+            rect = item['rect']
+            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
+                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+                pygame.draw.ellipse(screen, (255, 215, 0), screen_rect)  # Gold coin
         
-        # Draw platforms with camera offset
-        for platform in self.platforms:
-            # Only draw platforms that are visible on screen
-            if platform.right >= camera_x and platform.left <= camera_x + 800:
-                # Create screen-space rectangle
-                screen_rect = pygame.Rect(platform.x - camera_x, platform.y - camera_y, 
-                                        platform.width, platform.height)
-                
-                if platform == self.platforms[0]:  # Ground platform
-                    pygame.draw.rect(screen, (139, 69, 19), screen_rect)  # Brown ground
-                    # Add grass on top of ground
-                    grass_rect = pygame.Rect(screen_rect.x, screen_rect.y, 
-                                           screen_rect.width, 5)
-                    pygame.draw.rect(screen, (34, 139, 34), grass_rect)
-                else:
-                    pygame.draw.rect(screen, (160, 82, 45), screen_rect)  # Brown platforms
-                    # Add border to platforms
-                    pygame.draw.rect(screen, (101, 67, 33), screen_rect, 2)
+        # Draw enemy spawn points (for debugging/development)
+        # Uncomment this section if you want to see spawn markers visually
+        for spawn in self.enemy_spawns:
+            spawn_x = spawn['x'] - camera_x
+            spawn_y = spawn['y'] - camera_y
+            if -16 <= spawn_x <= 816 and -16 <= spawn_y <= 616:  # On screen check
+                color = {'basic': (255, 100, 100), 'jumping': (100, 255, 255), 'ambush': (255, 100, 255)}.get(spawn['type'], (255, 255, 255))
+                pygame.draw.circle(screen, color, (spawn_x, spawn_y), 8)
+                pygame.draw.circle(screen, (255, 255, 255), (spawn_x, spawn_y), 8, 2)
     
     def get_platforms(self):
-        """Return list of platform rectangles for collision detection."""
-        return self.platforms
+        """Return two lists: solid tiles and one-way tiles (platforms)."""
+        return self.solid_tiles, self.one_way_tiles
     
     def get_enemy_spawn_positions(self):
-        """Get valid enemy spawn positions on platforms."""
-        spawn_positions = []
-        
-        # Spawn enemies on platforms (not on ground)
-        for platform in self.platforms[1:]:  # Skip ground platform
-            if platform.width >= 60:  # Only on platforms wide enough
-                # Create patrol area for this platform
-                patrol_start = platform.x + 16
-                patrol_end = platform.x + platform.width - 16
-                spawn_x = platform.x + platform.width // 2
-                spawn_y = platform.y - 35  # Above the platform
-                
-                spawn_positions.append({
-                    'x': spawn_x,
-                    'y': spawn_y,
-                    'patrol_start': patrol_start,
-                    'patrol_end': patrol_end
-                })
-        
-        return spawn_positions
+        """Return enemy spawn positions from CSV markers."""
+        return self.enemy_spawns.copy()  # Return a copy to prevent external modification
     
     def get_level_number(self):
         """Return the current level number."""
