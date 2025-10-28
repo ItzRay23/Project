@@ -53,11 +53,17 @@ class Enemy(pygame.sprite.Sprite):
     
     def create_visual(self):
         """Create the visual representation. Override in subclasses."""
+        # Store current position before creating new rect
+        old_x = self.rect.x if hasattr(self, 'rect') else 0
+        old_y = self.rect.y if hasattr(self, 'rect') else 0
+        
         self.image = pygame.Surface((self.width, self.height))
         self.image.fill(self.color)
         self.rect = self.image.get_rect()
-        self.rect.x = self.rect.x  # Preserve position
-        self.rect.y = self.rect.y
+        
+        # Restore position after creating new rect
+        self.rect.x = old_x
+        self.rect.y = old_y
     
     def get_movement_behavior(self):
         """Get movement behavior for this enemy type. Override in subclasses."""
@@ -221,7 +227,7 @@ class AmbushEnemy(Enemy):
         
     def setup_properties(self):
         """Set up ambush enemy properties."""
-        self.speed = 0.5  # Slow patrol speed
+        self.speed = 0 
         self.health = 2
         self.max_health = 2
         self.damage = 1

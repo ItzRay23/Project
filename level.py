@@ -193,13 +193,13 @@ class Level:
         
         # Draw enemy spawn points (for debugging/development)
         # Uncomment this section if you want to see spawn markers visually
-        for spawn in self.enemy_spawns:
-            spawn_x = spawn['x'] - camera_x
-            spawn_y = spawn['y'] - camera_y
-            if -16 <= spawn_x <= 816 and -16 <= spawn_y <= 616:  # On screen check
-                color = {'basic': (255, 100, 100), 'jumping': (100, 255, 255), 'ambush': (255, 100, 255)}.get(spawn['type'], (255, 255, 255))
-                pygame.draw.circle(screen, color, (spawn_x, spawn_y), 8)
-                pygame.draw.circle(screen, (255, 255, 255), (spawn_x, spawn_y), 8, 2)
+        # for spawn in self.enemy_spawns:
+        #     spawn_x = spawn['x'] - camera_x
+        #     spawn_y = spawn['y'] - camera_y
+        #     if -16 <= spawn_x <= 816 and -16 <= spawn_y <= 616:  # On screen check
+        #         color = {'basic': (255, 100, 100), 'jumping': (100, 255, 255), 'ambush': (255, 100, 255)}.get(spawn['type'], (255, 255, 255))
+        #         pygame.draw.circle(screen, color, (spawn_x, spawn_y), 8)
+        #         pygame.draw.circle(screen, (255, 255, 255), (spawn_x, spawn_y), 8, 2)
     
     def get_platforms(self):
         """Return two lists: solid tiles and one-way tiles (platforms)."""
