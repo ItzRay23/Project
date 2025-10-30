@@ -223,12 +223,11 @@ class BasicEnemy(Enemy):
 
 
 class AmbushEnemy(Enemy):
-    """Enemy that hangs from platforms/blocks and ambushes players within an expanding 75-degree cone below itself."""
+    """Enemy that hangs from platforms/blocks and dashes directly to detected player positions within a 75-degree cone below itself."""
     
     def __init__(self, x, y, solid_tiles=None, one_way_tiles=None):
         super().__init__(x, y)
         self.detection_range = 500  # How far the enemy can detect the player
-        self.attack_range = 500   # How far the enemy will dash to attack
         self.is_attacking = False
         self.attack_cooldown = 0
         self.max_attack_cooldown = 180  # 3 seconds at 60fps
@@ -237,6 +236,10 @@ class AmbushEnemy(Enemy):
         self.is_returning = False
         self.has_gravity = False  # This enemy ignores gravity
         self.hanging_position = None  # Position where enemy hangs from platform
+        self.target_position = None  # Where the player was detected (dash target)
+        self.is_staying = False  # Whether enemy is staying at target position
+        self.stay_timer = 0  # Timer for staying at target position
+        self.stay_duration = 120  # How long to stay at target (2 seconds at 60fps)
         
         # Find platform/block to hang from during initialization
         if solid_tiles is not None or one_way_tiles is not None:
@@ -370,7 +373,10 @@ class AmbushEnemy(Enemy):
                 
                 self.is_attacking = True
                 
-                # Calculate dash direction towards player
+                # Store the exact position where we detected the player
+                self.target_position = (player_x, player_y)
+                
+                # Calculate dash direction towards detected player position
                 if total_distance > 0:  # Avoid division by zero
                     direction_x = distance_x / total_distance
                     direction_y = distance_y / total_distance
@@ -380,20 +386,24 @@ class AmbushEnemy(Enemy):
                 
                 self.attack_cooldown = self.max_attack_cooldown
         
-        # If attacking, continue dash movement (no gravity applied)
-        if self.is_attacking:
-            # Move with current velocity
-            self.rect.x += self.velocity_x
-            self.rect.y += self.velocity_y
+        # If attacking, dash towards the target position
+        if self.is_attacking and self.target_position:
+            target_x, target_y = self.target_position
             
-            # Check if we've moved far enough or hit something, then start returning
-            original_x, original_y = self.original_position
-            distance_from_start = ((self.rect.centerx - original_x) ** 2 + 
-                                 (self.rect.centery - original_y) ** 2) ** 0.5
+            # Calculate distance to target
+            distance_to_target_x = target_x - self.rect.centerx
+            distance_to_target_y = target_y - self.rect.centery
+            distance_to_target = math.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2)
             
-            if distance_from_start > self.attack_range:
+            # If we're close enough to the target, stop attacking and start returning
+            if distance_to_target <= 20:  # Within 20 pixels of target
                 self.is_attacking = False
                 self.is_returning = True
+                self.target_position = None  # Clear target
+            else:
+                # Continue moving towards target
+                self.rect.x += self.velocity_x
+                self.rect.y += self.velocity_y
         
         # If returning to original hanging position
         elif self.is_returning:
