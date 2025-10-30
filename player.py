@@ -81,8 +81,8 @@ class Player(pygame.sprite.Sprite):
         
         # Move horizontally and check collisions
         self.rect.x += self.velocity_x
-        # horizontal collisions against both solid and one-way platforms
-        self.check_horizontal_collisions(solid_tiles + one_way_tiles)
+        # horizontal collisions only against solid tiles (not platforms)
+        self.check_horizontal_collisions(solid_tiles)
 
         # Move vertically and check collisions
         self.rect.y += self.velocity_y
@@ -93,7 +93,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.y = max(0, min(self.rect.y, level_height - self.height))
     
     def check_horizontal_collisions(self, tiles):
-        """Check for horizontal collisions with tiles (solid or platforms)."""
+        """Check for horizontal collisions with solid tiles only (platforms have no horizontal collision)."""
         for tile in tiles:
             if self.rect.colliderect(tile):
                 if self.velocity_x > 0:  # Moving right

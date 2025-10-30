@@ -72,7 +72,8 @@ class Enemy(pygame.sprite.Sprite):
     def update(self, solid_tiles, one_way_tiles, level_height, level_width):
         """Update enemy position and behavior.
 
-        Enemies treat platforms as solid.
+        Solid tiles block movement in all directions.
+        One-way platforms only block vertical movement from above.
         """
         if not self.active:
             return
@@ -97,18 +98,18 @@ class Enemy(pygame.sprite.Sprite):
             self.rect.right = level_width
             self.direction *= -1
 
-        # Check horizontal tile collisions (solid + one-way treated as solid)
+        # Check horizontal tile collisions (only solid tiles, not one-way platforms)
         # Direction changes will happen in check_horizontal_collisions
-        self.check_horizontal_collisions(solid_tiles + one_way_tiles)
+        self.check_horizontal_collisions(solid_tiles)
 
         # Move vertically
         self.rect.y += self.velocity_y
 
         # Check vertical collisions
-        self.check_vertical_collisions(solid_tiles + one_way_tiles, level_height)
+        self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
     
     def check_horizontal_collisions(self, tiles):
-        """Check for horizontal collisions with tiles (treat platforms as solid)."""
+        """Check for horizontal collisions with solid tiles only (platforms ignore horizontal collision)."""
         for tile in tiles:
             if self.rect.colliderect(tile):
                 if self.velocity_x > 0:  # Moving right
@@ -117,19 +118,28 @@ class Enemy(pygame.sprite.Sprite):
                     self.rect.left = tile.right
                 self.direction *= -1  # Reverse direction on collision
     
-    def check_vertical_collisions(self, tiles, level_height):
-        """Check vertical collisions with tiles (treat platforms as solid)."""
+    def check_vertical_collisions(self, solid_tiles, one_way_tiles, level_height):
+        """Check vertical collisions. Solid tiles block all directions, platforms only block from above."""
         self.on_ground = False
 
-        for tile in tiles:
+        # Check solid tiles (full collision)
+        for tile in solid_tiles:
             if self.rect.colliderect(tile):
                 if self.velocity_y > 0:  # Falling down
                     self.rect.bottom = tile.top
                     self.velocity_y = 0
                     self.on_ground = True
-                elif self.velocity_y < 0:
+                elif self.velocity_y < 0:  # Moving up
                     self.rect.top = tile.bottom
                     self.velocity_y = 0
+
+        # Check one-way platforms (only block when falling onto them from above)
+        for tile in one_way_tiles:
+            if self.rect.colliderect(tile):
+                if self.velocity_y > 0:  # Only when falling
+                    self.rect.bottom = tile.top
+                    self.velocity_y = 0
+                    self.on_ground = True
 
         # Clamp to level bottom
         if self.rect.bottom >= level_height:
@@ -212,78 +222,178 @@ class BasicEnemy(Enemy):
 
 
 class AmbushEnemy(Enemy):
-    """Enemy that sticks to platforms and jumps down to attack the player."""
+    """Enemy that automatically finds and hangs from nearby platforms/blocks, then dashes towards the player when they get too close."""
     
-    def __init__(self, x, y):
+    def __init__(self, x, y, solid_tiles=None, one_way_tiles=None):
         super().__init__(x, y)
-        self.detection_range = 80  # How far the enemy can detect the player
-        self.attack_range = 100    # How far the enemy will jump to attack
+        self.detection_range = 100  # How far the enemy can detect the player
+        self.attack_range = 150     # How far the enemy will dash to attack
         self.is_attacking = False
         self.attack_cooldown = 0
-        self.max_attack_cooldown = 120  # 2 seconds at 60fps
-        self.original_platform_y = y  # Remember original platform position
-        self.patrol_distance = 32  # Small patrol distance on platform
-        self.patrol_center_x = x   # Center of patrol area
+        self.max_attack_cooldown = 180  # 3 seconds at 60fps
+        self.dash_speed = 5  # Speed when dashing towards player
+        self.return_speed = 2  # Speed when returning to original position
+        self.is_returning = False
+        self.has_gravity = False  # This enemy ignores gravity
+        self.hanging_position = None  # Position where enemy hangs from platform
         
+        # Find platform/block to hang from during initialization
+        if solid_tiles is not None or one_way_tiles is not None:
+            self.find_hanging_position(x, y, solid_tiles or [], one_way_tiles or [])
+        else:
+            # Fallback to original position if no tiles provided
+            self.hanging_position = (x, y)
+        
+        self.original_position = self.hanging_position  # Remember hanging position
+        
+    def find_hanging_position(self, spawn_x, spawn_y, solid_tiles, one_way_tiles):
+        """Find the nearest platform or block above the spawn point to hang from."""
+        all_tiles = solid_tiles + one_way_tiles
+        search_radius = 200  # How far to search for platforms/blocks
+        closest_tile = None
+        closest_distance = float('inf')
+        
+        # Search for tiles within range and above the spawn point
+        for tile in all_tiles:
+            # Check if tile is within horizontal search range
+            if abs(tile.centerx - spawn_x) <= search_radius:
+                # Check if tile is above the spawn point
+                if tile.bottom <= spawn_y:
+                    # Calculate distance to this tile
+                    distance = ((tile.centerx - spawn_x) ** 2 + (tile.bottom - spawn_y) ** 2) ** 0.5
+                    
+                    # Keep track of closest tile
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_tile = tile
+        
+        if closest_tile:
+            # Position enemy to hang from the bottom of the closest tile
+            hang_x = closest_tile.centerx - self.width // 2
+            hang_y = closest_tile.bottom  # Top of enemy touches bottom of tile
+            self.hanging_position = (hang_x, hang_y)
+            
+            # Update enemy position immediately
+            self.rect.x = hang_x
+            self.rect.y = hang_y
+        else:
+            # No suitable platform found, use original spawn position
+            self.hanging_position = (spawn_x, spawn_y)
+            self.rect.x = spawn_x
+            self.rect.y = spawn_y
+
     def setup_properties(self):
         """Set up ambush enemy properties."""
-        self.speed = 0 
+        self.speed = 0  # No normal movement speed
         self.health = 2
         self.max_health = 2
-        self.damage = 1
+        self.damage = 2  # Higher damage since it's an ambush attack
         self.color = (139, 0, 139)  # Dark magenta
     
     def get_movement_behavior(self):
-        """Ambush movement behavior - patrol platform and attack when player is near."""
+        """Ambush movement behavior - no normal movement, only dashing."""
         # Reduce attack cooldown
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
         
-        # If currently attacking, don't change horizontal movement
-        if self.is_attacking:
-            return 0
-        
-        # Normal patrol behavior on platform
-        # Check if we've moved too far from patrol center
-        if abs(self.rect.centerx - self.patrol_center_x) > self.patrol_distance:
-            self.direction *= -1  # Reverse direction
-            
-        return self.direction * self.speed
+        # No normal movement - this enemy stays in place when not attacking
+        return 0
     
     def update(self, solid_tiles, one_way_tiles, level_height, level_width, player_pos=None):
-        """Update with player detection for ambush attacks."""
+        """Update with player detection for ambush dash attacks."""
         if not self.active:
             return
         
+        # Reduce attack cooldown
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+        
         # Check if player is in range and we can attack
         if (player_pos and self.attack_cooldown == 0 and 
-            not self.is_attacking and self.on_ground):
+            not self.is_attacking and not self.is_returning):
             
             player_x, player_y = player_pos
             distance_x = abs(player_x - self.rect.centerx)
             distance_y = abs(player_y - self.rect.centery)
+            total_distance = (distance_x ** 2 + distance_y ** 2) ** 0.5
             
-            # If player is below and within range, jump down to attack
-            if (distance_x <= self.detection_range and 
-                player_y > self.rect.centery and 
-                distance_y <= self.attack_range):
-                
+            # If player is within range, dash to attack
+            if total_distance <= self.detection_range:
                 self.is_attacking = True
-                self.velocity_y = -8  # Jump down with some initial upward velocity
-                # Jump towards player
-                if player_x > self.rect.centerx:
-                    self.velocity_x = 3
-                else:
-                    self.velocity_x = -3
+                
+                # Calculate dash direction towards player
+                if total_distance > 0:  # Avoid division by zero
+                    direction_x = (player_x - self.rect.centerx) / total_distance
+                    direction_y = (player_y - self.rect.centery) / total_distance
+                    
+                    self.velocity_x = direction_x * self.dash_speed
+                    self.velocity_y = direction_y * self.dash_speed
                 
                 self.attack_cooldown = self.max_attack_cooldown
         
-        # Call parent update
-        super().update(solid_tiles, one_way_tiles, level_height, level_width)
+        # If attacking, continue dash movement (no gravity applied)
+        if self.is_attacking:
+            # Move with current velocity
+            self.rect.x += self.velocity_x
+            self.rect.y += self.velocity_y
+            
+            # Check if we've moved far enough or hit something, then start returning
+            original_x, original_y = self.original_position
+            distance_from_start = ((self.rect.centerx - original_x) ** 2 + 
+                                 (self.rect.centery - original_y) ** 2) ** 0.5
+            
+            if distance_from_start > self.attack_range:
+                self.is_attacking = False
+                self.is_returning = True
         
-        # Reset attacking state when landing
-        if self.is_attacking and self.on_ground and self.velocity_y == 0:
-            self.is_attacking = False
+        # If returning to original hanging position
+        elif self.is_returning:
+            hang_x, hang_y = self.hanging_position
+            
+            # Calculate direction back to hanging position
+            distance_x = hang_x - self.rect.x
+            distance_y = hang_y - self.rect.y
+            total_distance = (distance_x ** 2 + distance_y ** 2) ** 0.5
+            
+            if total_distance > 5:  # If not close enough to hanging position
+                direction_x = distance_x / total_distance
+                direction_y = distance_y / total_distance
+                
+                self.velocity_x = direction_x * self.return_speed
+                self.velocity_y = direction_y * self.return_speed
+                
+                self.rect.x += self.velocity_x
+                self.rect.y += self.velocity_y
+            else:
+                # Close enough to hanging position, snap back and stop
+                self.rect.x = hang_x
+                self.rect.y = hang_y
+                self.velocity_x = 0
+                self.velocity_y = 0
+                self.is_returning = False
+        
+        # When idle, stay at hanging position (no gravity)
+        else:
+            self.velocity_x = 0
+            self.velocity_y = 0
+            # Ensure enemy stays at hanging position when idle
+            if self.hanging_position:
+                hang_x, hang_y = self.hanging_position
+                self.rect.x = hang_x
+                self.rect.y = hang_y
+        
+        # Check collisions with tiles only when not in attack/return mode
+        if not self.is_attacking and not self.is_returning:
+            # Check level boundaries
+            if self.rect.left <= 0:
+                self.rect.left = 0
+            elif self.rect.right >= level_width:
+                self.rect.right = level_width
+            
+            if self.rect.top <= 0:
+                self.rect.top = 0
+            elif self.rect.bottom >= level_height:
+                self.rect.bottom = level_height
 
 
 class JumpingEnemy(Enemy):
