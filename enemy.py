@@ -223,7 +223,7 @@ class BasicEnemy(Enemy):
 
 
 class AmbushEnemy(Enemy):
-    """Enemy that hangs from platforms/blocks and dashes directly to detected player positions within a 75-degree cone below itself."""
+    """Enemy that hangs from platforms/blocks, dashes to detected player positions, stays there briefly, then returns to hanging position."""
     
     def __init__(self, x, y, solid_tiles=None, one_way_tiles=None):
         super().__init__(x, y)
@@ -353,13 +353,14 @@ class AmbushEnemy(Enemy):
         if not self.active:
             return
         
-        # Reduce attack cooldown
-        if self.attack_cooldown > 0:
+        # Only reduce attack cooldown when enemy is back at original position (idle state)
+        if (self.attack_cooldown > 0 and 
+            not self.is_attacking and not self.is_staying and not self.is_returning):
             self.attack_cooldown -= 1
         
         # Check if player is in range and we can attack
         if (player_pos and self.attack_cooldown == 0 and 
-            not self.is_attacking and not self.is_returning):
+            not self.is_attacking and not self.is_staying and not self.is_returning):
             
             player_x, player_y = player_pos
             distance_x = player_x - self.rect.centerx
@@ -395,15 +396,32 @@ class AmbushEnemy(Enemy):
             distance_to_target_y = target_y - self.rect.centery
             distance_to_target = math.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2)
             
-            # If we're close enough to the target, stop attacking and start returning
+            # If we're close enough to the target, stop attacking and start staying
             if distance_to_target <= 20:  # Within 20 pixels of target
                 self.is_attacking = False
-                self.is_returning = True
-                self.target_position = None  # Clear target
+                self.is_staying = True
+                self.stay_timer = self.stay_duration
+                self.velocity_x = 0
+                self.velocity_y = 0
             else:
                 # Continue moving towards target
                 self.rect.x += self.velocity_x
                 self.rect.y += self.velocity_y
+        
+        # If staying at target position for a few seconds
+        elif self.is_staying:
+            # Count down the stay timer
+            self.stay_timer -= 1
+            
+            # Stay motionless at current position
+            self.velocity_x = 0
+            self.velocity_y = 0
+            
+            # When timer expires, start returning
+            if self.stay_timer <= 0:
+                self.is_staying = False
+                self.is_returning = True
+                self.target_position = None  # Clear target
         
         # If returning to original hanging position
         elif self.is_returning:
