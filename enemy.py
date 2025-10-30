@@ -5,6 +5,7 @@ Base Enemy class with inheritance for different enemy types.
 
 import pygame
 import random
+import math
 
 class Enemy(pygame.sprite.Sprite):
     """Base enemy class with common functionality."""
@@ -222,12 +223,12 @@ class BasicEnemy(Enemy):
 
 
 class AmbushEnemy(Enemy):
-    """Enemy that automatically finds and hangs from nearby platforms/blocks, then dashes towards the player when they get too close."""
+    """Enemy that hangs from platforms/blocks and ambushes players within an expanding 75-degree cone below itself."""
     
     def __init__(self, x, y, solid_tiles=None, one_way_tiles=None):
         super().__init__(x, y)
-        self.detection_range = 100  # How far the enemy can detect the player
-        self.attack_range = 150     # How far the enemy will dash to attack
+        self.detection_range = 500  # How far the enemy can detect the player
+        self.attack_range = 500   # How far the enemy will dash to attack
         self.is_attacking = False
         self.attack_cooldown = 0
         self.max_attack_cooldown = 180  # 3 seconds at 60fps
@@ -282,6 +283,51 @@ class AmbushEnemy(Enemy):
             self.rect.x = spawn_x
             self.rect.y = spawn_y
 
+    def is_within_attack_cone(self, distance_x, distance_y):
+        """Check if the player is within the 75-degree expanding cone below the enemy."""
+        # Only check if player is below the enemy (distance_y must be positive)
+        if distance_y <= 0:
+            return False
+        
+        # Calculate the cone boundaries at the player's distance
+        # The cone expands as it gets further from the enemy
+        player_distance = math.sqrt(distance_x ** 2 + distance_y ** 2)
+        
+        # 75-degree cone means 37.5 degrees on each side of straight down
+        half_cone_angle_radians = math.radians(37.5)
+        
+        # Calculate the maximum horizontal distance allowed at this vertical distance
+        # Using trigonometry: tan(angle) = opposite/adjacent = horizontal_distance/vertical_distance
+        max_horizontal_distance = distance_y * math.tan(half_cone_angle_radians)
+        
+        # Check if the player is within the cone boundaries
+        return abs(distance_x) <= max_horizontal_distance
+    
+    def has_clear_path_to_player(self, player_x, player_y, solid_tiles):
+        """Check if there's a clear path to the player through solid blocks (platforms are ignored)."""
+        # Calculate the path from enemy to player
+        start_x, start_y = self.rect.centerx, self.rect.centery
+        end_x, end_y = player_x, player_y
+        
+        # Use line-of-sight checking with multiple sample points along the path
+        num_checks = 10  # Number of points to check along the path
+        
+        for i in range(1, num_checks + 1):
+            # Calculate intermediate point along the line from enemy to player
+            t = i / num_checks  # Parameter from 0 to 1
+            check_x = start_x + t * (end_x - start_x)
+            check_y = start_y + t * (end_y - start_y)
+            
+            # Create a small rect for this check point
+            check_rect = pygame.Rect(check_x - 5, check_y - 5, 10, 10)
+            
+            # Check if this point intersects with any solid tiles (not platforms)
+            for tile in solid_tiles:
+                if check_rect.colliderect(tile):
+                    return False  # Path is blocked by solid tile
+        
+        return True  # Clear path found
+    
     def setup_properties(self):
         """Set up ambush enemy properties."""
         self.speed = 0  # No normal movement speed
@@ -300,7 +346,7 @@ class AmbushEnemy(Enemy):
         return 0
     
     def update(self, solid_tiles, one_way_tiles, level_height, level_width, player_pos=None):
-        """Update with player detection for ambush dash attacks."""
+        """Update with player detection for ambush dash attacks from below only."""
         if not self.active:
             return
         
@@ -313,18 +359,21 @@ class AmbushEnemy(Enemy):
             not self.is_attacking and not self.is_returning):
             
             player_x, player_y = player_pos
-            distance_x = abs(player_x - self.rect.centerx)
-            distance_y = abs(player_y - self.rect.centery)
+            distance_x = player_x - self.rect.centerx
+            distance_y = player_y - self.rect.centery
             total_distance = (distance_x ** 2 + distance_y ** 2) ** 0.5
             
-            # If player is within range, dash to attack
-            if total_distance <= self.detection_range:
+            # Only attack if player is within range, within expanding attack cone, and has clear path
+            if (total_distance <= self.detection_range and 
+                self.is_within_attack_cone(distance_x, distance_y) and
+                self.has_clear_path_to_player(player_x, player_y, solid_tiles)):
+                
                 self.is_attacking = True
                 
                 # Calculate dash direction towards player
                 if total_distance > 0:  # Avoid division by zero
-                    direction_x = (player_x - self.rect.centerx) / total_distance
-                    direction_y = (player_y - self.rect.centery) / total_distance
+                    direction_x = distance_x / total_distance
+                    direction_y = distance_y / total_distance
                     
                     self.velocity_x = direction_x * self.dash_speed
                     self.velocity_y = direction_y * self.dash_speed
