@@ -52,10 +52,9 @@ A basic pygame project structure with player, enemy, and level management.
 ## Game Mechanics
 
 - Green square is the player
-- Red squares are enemies
-- Gray rectangles are obstacles
 - Health bars appear above entities when damaged
-- Level number is displayed in the top-left corner
+- 3 Different Enemy types (normal, jumpy, and ambush)
+- 
 
 ## Development Environment
 
