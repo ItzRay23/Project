@@ -15,6 +15,7 @@ class Level:
     CSV tile codes:
     . -> empty
     G -> ground (solid, full collision)
+    D -> dirt (solid, full collision, plain dirt appearance)
     P -> platform (one-way: collides only from above)
     C -> collectible (placed on top of tile)
     B -> BasicEnemy spawn point
@@ -31,7 +32,9 @@ class Level:
 
         # Storage for tiles
         self.tiles = []  # 2D list of tile codes
-        self.solid_tiles = []  # list of pygame.Rect for G (ground)
+        self.solid_tiles = []  # list of pygame.Rect for G and D (ground and dirt)
+        self.ground_tiles = []  # list of pygame.Rect for G (ground) specifically
+        self.dirt_tiles = []  # list of pygame.Rect for D (dirt) specifically
         self.one_way_tiles = []  # list of pygame.Rect for P (platform)
         self.collectibles = []  # list of dicts: {'rect': Rect, 'collected': False}
         self.enemy_spawns = []  # list of dicts: {'x': x, 'y': y, 'type': enemy_type}
@@ -55,6 +58,8 @@ class Level:
         # Clear previous
         self.tiles = []
         self.solid_tiles = []
+        self.ground_tiles = []
+        self.dirt_tiles = []
         self.one_way_tiles = []
         self.collectibles = []
         self.enemy_spawns = []
@@ -100,6 +105,12 @@ class Level:
                 if code == 'G':
                     rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
                     self.solid_tiles.append(rect)
+                    self.ground_tiles.append(rect)
+                elif code == 'D':
+                    # Dirt block - same collision as ground but different appearance
+                    rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                    self.solid_tiles.append(rect)
+                    self.dirt_tiles.append(rect)
                 elif code == 'P':
                     # Make platforms thin - only 8 pixels thick at the top
                     platform_thickness = 8
@@ -137,8 +148,8 @@ class Level:
             decoration = {'pos': (x, y), 'size': size, 'color': (255, 255, 255), 'type': 'cloud'}
             self.decorations.append(decoration)
 
-        # Small grass decorations above solid tiles
-        for rect in self.solid_tiles:
+        # Small grass decorations above ground tiles only (not dirt)
+        for rect in self.ground_tiles:
             if random.random() < 0.2:
                 decoration = {'pos': (rect.x + 8, rect.y - 8), 'size': 6, 'color': (34, 139, 34), 'type': 'grass'}
                 self.decorations.append(decoration)
@@ -150,7 +161,7 @@ class Level:
         pass
     
     def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the level to the screen with camera offset."""
+        """Draw the entire level to the screen with camera offset (no visibility culling)."""
         # Draw background
         screen.fill(self.background_color)
 
@@ -168,38 +179,40 @@ class Level:
                 for i in range(3):
                     pygame.draw.line(screen, decoration['color'], (screen_x + i*3, screen_y), (screen_x + i*3, screen_y - 5), 2)
 
-        # Draw tiles (solid ground and one-way platforms)
-        for rect in self.solid_tiles:
-            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
-                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
-                pygame.draw.rect(screen, (139, 69, 19), screen_rect)
-                grass_rect = pygame.Rect(screen_rect.x, screen_rect.y, screen_rect.width, 4)
-                pygame.draw.rect(screen, (34, 139, 34), grass_rect)
+        # Draw ground tiles (brown with grass on top)
+        for rect in self.ground_tiles:
+            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+            pygame.draw.rect(screen, (139, 69, 19), screen_rect)
+            grass_rect = pygame.Rect(screen_rect.x, screen_rect.y, screen_rect.width, 4)
+            pygame.draw.rect(screen, (34, 139, 34), grass_rect)
 
+        # Draw dirt tiles (plain brown, no grass)
+        for rect in self.dirt_tiles:
+            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+            pygame.draw.rect(screen, (101, 67, 33), screen_rect)  # Darker brown for dirt
+
+        # Draw platform tiles (one-way platforms)
         for rect in self.one_way_tiles:
-            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
-                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
-                pygame.draw.rect(screen, (160, 82, 45), screen_rect)
-                pygame.draw.rect(screen, (101, 67, 33), screen_rect, 2)
+            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+            pygame.draw.rect(screen, (160, 82, 45), screen_rect)
+            pygame.draw.rect(screen, (101, 67, 33), screen_rect, 2)
 
         # Draw collectibles
         for item in self.collectibles:
             if item['collected']:
                 continue
             rect = item['rect']
-            if rect.right >= camera_x and rect.left <= camera_x + self.tile_size * 12:
-                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
-                pygame.draw.ellipse(screen, (255, 215, 0), screen_rect)  # Gold coin
+            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+            pygame.draw.ellipse(screen, (255, 215, 0), screen_rect)  # Gold coin
         
         # Draw enemy spawn points (for debugging/development)
         # Uncomment this section if you want to see spawn markers visually
         # for spawn in self.enemy_spawns:
         #     spawn_x = spawn['x'] - camera_x
         #     spawn_y = spawn['y'] - camera_y
-        #     if -16 <= spawn_x <= 816 and -16 <= spawn_y <= 616:  # On screen check
-        #         color = {'basic': (255, 100, 100), 'jumping': (100, 255, 255), 'ambush': (255, 100, 255)}.get(spawn['type'], (255, 255, 255))
-        #         pygame.draw.circle(screen, color, (spawn_x, spawn_y), 8)
-        #         pygame.draw.circle(screen, (255, 255, 255), (spawn_x, spawn_y), 8, 2)
+        #     color = {'basic': (255, 100, 100), 'jumping': (100, 255, 255), 'ambush': (255, 100, 255)}.get(spawn['type'], (255, 255, 255))
+        #     pygame.draw.circle(screen, color, (spawn_x, spawn_y), 8)
+        #     pygame.draw.circle(screen, (255, 255, 255), (spawn_x, spawn_y), 8, 2)
     
     def get_platforms(self):
         """Return two lists: solid tiles and one-way tiles (platforms)."""

@@ -53,17 +53,20 @@ class Game:
         """Spawn enemies based on CSV spawn markers."""
         spawn_positions = self.level.get_enemy_spawn_positions()
         
-        # Map enemy type strings to classes
-        enemy_class_map = {
-            'basic': BasicEnemy,
-            'jumping': JumpingEnemy,
-            'ambush': AmbushEnemy
-        }
+        # Get tile information for ambush enemies
+        solid_tiles, one_way_tiles = self.level.get_platforms()
         
         for spawn in spawn_positions:
             enemy_type = spawn.get('type', 'basic')  # Default to basic if type missing
-            enemy_class = enemy_class_map.get(enemy_type, BasicEnemy)
-            enemy = enemy_class(spawn['x'], spawn['y'])
+            
+            if enemy_type == 'ambush':
+                # AmbushEnemy needs tile information to find hanging position
+                enemy = AmbushEnemy(spawn['x'], spawn['y'], solid_tiles, one_way_tiles)
+            elif enemy_type == 'jumping':
+                enemy = JumpingEnemy(spawn['x'], spawn['y'])
+            else:  # basic or unknown types
+                enemy = BasicEnemy(spawn['x'], spawn['y'])
+            
             self.enemies.add(enemy)
     
     def handle_events(self):
