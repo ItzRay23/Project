@@ -79,12 +79,6 @@ Three distinct enemy types with inheritance-based design:
 
 ## Game Mechanics
 
-<<<<<<< Updated upstream
-- Green square is the player
-- Health bars appear above entities when damaged
-- 3 Different Enemy types (normal, jumpy, and ambush)
-- 
-=======
 - **Player**: Blue rectangle (32x48 pixels) with 3 hearts of health
 - **Enemies**:
   - Red squares (BasicEnemy)
@@ -93,7 +87,6 @@ Three distinct enemy types with inheritance-based design:
 - **Environment**: Brown ground tiles, wooden platforms, gold collectibles
 - **Physics**: Realistic gravity, one-way platform support, collision boundaries
 - **Camera**: Follows player with smooth scrolling within level bounds
->>>>>>> Stashed changes
 
 ## Level Design Notes
 

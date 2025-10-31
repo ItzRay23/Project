@@ -189,7 +189,7 @@ class Level:
         # Draw dirt tiles (plain brown, no grass)
         for rect in self.dirt_tiles:
             screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
-            pygame.draw.rect(screen, (101, 67, 33), screen_rect)  # Darker brown for dirt
+            pygame.draw.rect(screen, (139, 69, 19), screen_rect)  # Darker brown for dirt
 
         # Draw platform tiles (one-way platforms)
         for rect in self.one_way_tiles:
