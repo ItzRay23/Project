@@ -21,7 +21,7 @@ class Game:
         
         # Create the display
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
-        pygame.display.set_caption("2D Platformer Game")
+        pygame.display.set_caption("Echoes of Lyra")
         
         # Clock for controlling frame rate
         self.clock = pygame.time.Clock()
