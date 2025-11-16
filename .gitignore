@@ -98,8 +98,3 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
-# Extra Scripts
-
-check_fonts.py
-generate_title.py
