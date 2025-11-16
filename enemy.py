@@ -374,13 +374,22 @@ class AmbushEnemy(Enemy):
                 
                 self.is_attacking = True
                 
-                # Store the exact position where we detected the player
-                self.target_position = (player_x, player_y)
+                # Store the center position of the player (assuming player is 32x48)
+                # This makes the ambush target the player's center instead of top-left corner
+                player_width = 32
+                player_height = 48
+                player_center_x = player_x + player_width // 2
+                player_center_y = player_y + player_height // 2
+                self.target_position = (player_center_x, player_center_y)
                 
-                # Calculate dash direction towards detected player position
-                if total_distance > 0:  # Avoid division by zero
-                    direction_x = distance_x / total_distance
-                    direction_y = distance_y / total_distance
+                # Calculate dash direction towards the player's CENTER position
+                distance_to_center_x = player_center_x - self.rect.centerx
+                distance_to_center_y = player_center_y - self.rect.centery
+                distance_to_center = math.sqrt(distance_to_center_x ** 2 + distance_to_center_y ** 2)
+                
+                if distance_to_center > 0:  # Avoid division by zero
+                    direction_x = distance_to_center_x / distance_to_center
+                    direction_y = distance_to_center_y / distance_to_center
                     
                     self.velocity_x = direction_x * self.dash_speed
                     self.velocity_y = direction_y * self.dash_speed
