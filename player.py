@@ -38,8 +38,17 @@ class Player(pygame.sprite.Sprite):
         self.can_jump = True
         
         # Double jump mechanic
-        self.has_double_jump = True  # Can use double jump
+        self.has_double_jump = False  # Can use double jump (starts false, enabled after landing)
         self.jump_key_was_pressed = False  # Track jump key state for edge detection
+        self.double_jump_grace_period = 500  # Time window after jumping when double jump is allowed (milliseconds)
+        self.jump_start_time = 0  # When the player last jumped
+        self.has_landed_since_jump = True  # Track if player has landed since last jump
+        
+        # Shooting mechanic
+        self.shoot_key_was_pressed = False  # Track shoot key for edge detection
+        self.shoot_cooldown = 300  # Milliseconds between shots
+        self.last_shot_time = 0
+        self.facing_direction = 1  # 1 for right, -1 for left (track which way player is facing)
         
         # Damage immunity
         self.invulnerable = False
@@ -116,12 +125,17 @@ class Player(pygame.sprite.Sprite):
         if self.is_dashing:
             # During dash, move at dash speed in dash direction
             self.velocity_x = self.dash_direction * self.dash_speed
+            # Update facing direction based on dash
+            if self.dash_direction != 0:
+                self.facing_direction = self.dash_direction
         else:
             # Normal movement
             if keys[pygame.K_LEFT] or keys[pygame.K_a]:
                 self.velocity_x = -self.speed
+                self.facing_direction = -1
             if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
                 self.velocity_x = self.speed
+                self.facing_direction = 1
         
         # Handle jumping (ground jump and double jump)
         jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
@@ -133,10 +147,16 @@ class Player(pygame.sprite.Sprite):
                 self.velocity_y = self.jump_speed
                 self.on_ground = False
                 self.can_jump = False
+                self.jump_start_time = current_time
+                self.has_landed_since_jump = False
+                # Enable double jump immediately after ground jump
+                self.has_double_jump = True
             elif not self.on_ground and self.has_double_jump:
-                # Double jump (air jump)
-                self.velocity_y = self.jump_speed
-                self.has_double_jump = False
+                # Double jump (air jump) - within grace period after first jump
+                time_since_jump = current_time - self.jump_start_time
+                if time_since_jump <= self.double_jump_grace_period:
+                    self.velocity_y = self.jump_speed
+                    self.has_double_jump = False
         
         self.jump_key_was_pressed = jump_pressed
         
@@ -208,8 +228,10 @@ class Player(pygame.sprite.Sprite):
         # Update last grounded time when touching ground
         if self.on_ground:
             self.last_grounded_time = pygame.time.get_ticks()
-            # Reset double jump when landing
-            self.has_double_jump = True
+            # Mark that player has landed (but don't give double jump yet - only on jump)
+            if not self.has_landed_since_jump:
+                self.has_landed_since_jump = True
+                self.has_double_jump = False  # Reset double jump, will be enabled on next jump
     
     def draw(self, screen, camera_x=0, camera_y=0, total_crystals=0, collected_crystals=0):
         """Draw the player to the screen with camera offset."""
@@ -237,6 +259,9 @@ class Player(pygame.sprite.Sprite):
         
         # Draw dash indicator
         self.draw_dash_indicator(screen)
+        
+        # Draw double jump indicator
+        self.draw_double_jump_indicator(screen)
     
     def draw_hearts(self, screen):
         """Draw player's hearts (health)."""
@@ -358,12 +383,97 @@ class Player(pygame.sprite.Sprite):
         pygame.draw.rect(screen, (200, 200, 200), 
                         (indicator_x, indicator_y, indicator_width, indicator_height), 2)
     
+    def draw_double_jump_indicator(self, screen):
+        """Draw double jump availability indicator."""
+        # Position next to dash indicator
+        indicator_x = 100  # Right of dash indicator
+        indicator_y = 125
+        indicator_width = 80
+        indicator_height = 20
+        
+        # Draw background
+        pygame.draw.rect(screen, (50, 50, 50), 
+                        (indicator_x, indicator_y, indicator_width, indicator_height))
+        
+        if self.has_double_jump:
+            # Double jump available - draw full blue bar with pulsing effect
+            pulse = abs((pygame.time.get_ticks() % 1000) - 500) / 500.0  # 0 to 1 pulse
+            brightness = int(150 + 105 * pulse)  # Pulse between 150 and 255
+            color = (0, brightness, brightness)  # Cyan color
+            pygame.draw.rect(screen, color, 
+                           (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+            
+            # Draw "JUMP" text
+            font = pygame.font.Font(None, 18)
+            text = font.render("JUMP", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+            screen.blit(text, text_rect)
+        else:
+            # Double jump not available
+            current_time = pygame.time.get_ticks()
+            time_since_jump = current_time - self.jump_start_time
+            
+            if time_since_jump < self.double_jump_grace_period and not self.on_ground:
+                # Within grace period but already used - show depleted
+                pygame.draw.rect(screen, (80, 80, 80), 
+                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+                
+                # Draw "USED" text
+                font = pygame.font.Font(None, 18)
+                text = font.render("USED", True, (150, 150, 150))
+                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+                screen.blit(text, text_rect)
+            elif self.on_ground:
+                # On ground - show recharging
+                pygame.draw.rect(screen, (0, 100, 100), 
+                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+                
+                # Draw "READY" text
+                font = pygame.font.Font(None, 18)
+                text = font.render("READY", True, (200, 200, 200))
+                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+                screen.blit(text, text_rect)
+            else:
+                # Grace period expired - show unavailable
+                pygame.draw.rect(screen, (100, 0, 0), 
+                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+                
+                # Draw "---" text
+                font = pygame.font.Font(None, 18)
+                text = font.render("---", True, (150, 150, 150))
+                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+                screen.blit(text, text_rect)
+        
+        # Draw border
+        pygame.draw.rect(screen, (200, 200, 200), 
+                        (indicator_x, indicator_y, indicator_width, indicator_height), 2)
+    
     def can_dash(self):
         """Check if player can currently dash."""
         current_time = pygame.time.get_ticks()
         cooldown_ready = (current_time - self.last_dash_time) > self.dash_cooldown
         recently_grounded = (current_time - self.last_grounded_time) <= self.dash_grace_period
         return recently_grounded and not self.is_dashing and cooldown_ready
+    
+    def can_shoot(self):
+        """Check if player can shoot (cooldown check)."""
+        current_time = pygame.time.get_ticks()
+        return (current_time - self.last_shot_time) > self.shoot_cooldown
+    
+    def shoot(self):
+        """Create and return a bullet. Returns None if on cooldown."""
+        if not self.can_shoot():
+            return None
+        
+        # Create bullet from player position
+        bullet_x = self.rect.centerx
+        bullet_y = self.rect.centery
+        
+        # Update last shot time
+        self.last_shot_time = pygame.time.get_ticks()
+        
+        # Return bullet info (game will create the actual bullet)
+        return {'x': bullet_x, 'y': bullet_y, 'direction': self.facing_direction}
     
     def start_dash(self, direction):
         """Start a dash in the given direction (-1 for left, 1 for right)."""
@@ -418,4 +528,6 @@ class Player(pygame.sprite.Sprite):
         self.invulnerable = False
         self.is_dashing = False
         self.dash_direction = 0
-        self.has_double_jump = True
+        self.has_double_jump = False
+        self.has_landed_since_jump = True
+        self.jump_start_time = 0

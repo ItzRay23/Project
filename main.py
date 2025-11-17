@@ -10,6 +10,7 @@ from player import Player
 from enemy import BasicEnemy, JumpingEnemy, AmbushEnemy
 from level import Level
 from menu import MainMenu, LevelSelect
+from bullet import Bullet
 
 class Game:
     def __init__(self):
@@ -45,6 +46,7 @@ class Game:
         self.level = None
         self.player = None
         self.enemies = pygame.sprite.Group()
+        self.bullets = pygame.sprite.Group()
 
         # Camera system
         self.camera_x = 0
@@ -89,6 +91,9 @@ class Game:
         # Clear and spawn enemies
         self.enemies.empty()
         self.spawn_enemies()
+        
+        # Clear bullets
+        self.bullets.empty()
         
         # Reset camera
         self.camera_x = 0
@@ -142,6 +147,12 @@ class Game:
                 elif event.key == pygame.K_RETURN and self.state == "level_complete":
                     # Continue to level select after completing level
                     self.state = "level_select"
+                elif event.key == pygame.K_x and self.state == "playing" and not self.game_over:
+                    # Shoot bullet
+                    bullet_info = self.player.shoot()
+                    if bullet_info:
+                        bullet = Bullet(bullet_info['x'], bullet_info['y'], bullet_info['direction'])
+                        self.bullets.add(bullet)
             
             # Handle menu events
             if self.state == "main_menu":
@@ -187,6 +198,24 @@ class Game:
                     enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width, player_pos)
                 else:
                     enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width)
+            
+            # Update bullets
+            for bullet in self.bullets:
+                bullet.update(self.level.width, self.level.height)
+                # Remove inactive bullets
+                if not bullet.active:
+                    self.bullets.remove(bullet)
+            
+            # Check bullet-enemy collisions
+            for bullet in self.bullets:
+                if not bullet.active:
+                    continue
+                bullet_rect = bullet.get_rect()
+                for enemy in self.enemies:
+                    if enemy.active and bullet_rect.colliderect(enemy.get_rect()):
+                        enemy.take_damage(bullet.damage)
+                        bullet.hit()
+                        break
             
             # Update level
             self.level.update()
@@ -250,6 +279,11 @@ class Game:
             for enemy in self.enemies:
                 if enemy.active:
                     enemy.draw(self.screen, self.camera_x, self.camera_y)
+            
+            # Draw bullets with camera offset
+            for bullet in self.bullets:
+                if bullet.active:
+                    bullet.draw(self.screen, self.camera_x, self.camera_y)
             
             # Draw game over screen if needed
             if self.game_over:
