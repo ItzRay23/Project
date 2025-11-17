@@ -22,6 +22,7 @@ class Level:
     B -> BasicEnemy spawn point
     J -> JumpingEnemy spawn point
     A -> AmbushEnemy spawn point
+    Z -> BossEnemy spawn point
 
     The level is a grid of tiles. Tile size can be adjusted using `tile_size`.
     """
@@ -36,10 +37,15 @@ class Level:
         self.solid_tiles = []  # list of pygame.Rect for G and D (ground and dirt)
         self.ground_tiles = []  # list of pygame.Rect for G (ground) specifically
         self.dirt_tiles = []  # list of pygame.Rect for D (dirt) specifically
+        self.cobblestone_tiles = []  # list of pygame.Rect for S (cobblestone) specifically
+        self.removable_tiles = []  # list of pygame.Rect for R (removable wooden planks)
         self.one_way_tiles = []  # list of pygame.Rect for P (platform)
         self.collectibles = []  # list of dicts: {'rect': Rect, 'collected': False}
         self.enemy_spawns = []  # list of dicts: {'x': x, 'y': y, 'type': enemy_type}
         self.exit_rect = None  # pygame.Rect for E (exit door)
+        
+        # Boss defeat tracking
+        self.boss_defeated = False
 
         # Level pixel dimensions (computed after loading CSV)
         self.width = 0
@@ -62,6 +68,8 @@ class Level:
         self.solid_tiles = []
         self.ground_tiles = []
         self.dirt_tiles = []
+        self.cobblestone_tiles = []
+        self.removable_tiles = []
         self.one_way_tiles = []
         self.collectibles = []
         self.enemy_spawns = []
@@ -114,6 +122,16 @@ class Level:
                     rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
                     self.solid_tiles.append(rect)
                     self.dirt_tiles.append(rect)
+                elif code == 'S':
+                    # Cobblestone - solid tile with cracked stone appearance
+                    rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                    self.solid_tiles.append(rect)
+                    self.cobblestone_tiles.append(rect)
+                elif code == 'R':
+                    # Removable wooden planks - removed after boss defeat
+                    rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                    self.solid_tiles.append(rect)
+                    self.removable_tiles.append(rect)
                 elif code == 'P':
                     # Make platforms thin - only 8 pixels thick at the top
                     platform_thickness = 8
@@ -165,6 +183,16 @@ class Level:
                 decoration = {'pos': (rect.x + 8, rect.y - 8), 'size': 6, 'color': (34, 139, 34), 'type': 'grass'}
                 self.decorations.append(decoration)
     
+    def remove_boss_tiles(self):
+        """Remove all removable tiles after boss is defeated."""
+        if not self.boss_defeated:
+            self.boss_defeated = True
+            # Remove all removable tiles from solid_tiles
+            for tile in self.removable_tiles:
+                if tile in self.solid_tiles:
+                    self.solid_tiles.remove(tile)
+            print("Boss defeated! Removable tiles have been removed.")
+    
     def update(self):
         """Update level state."""
         # Update any animated decorations here
@@ -201,6 +229,85 @@ class Level:
         for rect in self.dirt_tiles:
             screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
             pygame.draw.rect(screen, (139, 69, 19), screen_rect)  # Darker brown for dirt
+        
+        # Draw cobblestone tiles (stone with cracks)
+        for rect in self.cobblestone_tiles:
+            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+            
+            # Base stone color (gray)
+            pygame.draw.rect(screen, (120, 120, 130), screen_rect)
+            
+            # Draw darker border for depth
+            pygame.draw.rect(screen, (80, 80, 90), screen_rect, 3)
+            
+            # Draw cracks for cobbled look
+            crack_color = (70, 70, 80)
+            
+            # Vertical crack (left side)
+            pygame.draw.line(screen, crack_color, 
+                           (screen_rect.x + 8, screen_rect.y + 5),
+                           (screen_rect.x + 6, screen_rect.y + 25), 2)
+            
+            # Diagonal crack (middle)
+            pygame.draw.line(screen, crack_color,
+                           (screen_rect.x + 20, screen_rect.y + 10),
+                           (screen_rect.x + 45, screen_rect.y + 30), 2)
+            
+            # Horizontal crack (bottom)
+            pygame.draw.line(screen, crack_color,
+                           (screen_rect.x + 15, screen_rect.y + 50),
+                           (screen_rect.x + 40, screen_rect.y + 48), 2)
+            
+            # Small crack (top right)
+            pygame.draw.line(screen, crack_color,
+                           (screen_rect.x + 50, screen_rect.y + 8),
+                           (screen_rect.x + 55, screen_rect.y + 15), 2)
+            
+            # Add subtle texture spots
+            texture_color = (100, 100, 110)
+            pygame.draw.circle(screen, texture_color, 
+                             (screen_rect.x + 30, screen_rect.y + 20), 3)
+            pygame.draw.circle(screen, texture_color,
+                             (screen_rect.x + 15, screen_rect.y + 40), 2)
+            pygame.draw.circle(screen, texture_color,
+                             (screen_rect.x + 50, screen_rect.y + 35), 2)
+        
+        # Draw removable wooden plank tiles (only if not removed yet)
+        if not self.boss_defeated:
+            for rect in self.removable_tiles:
+                screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
+                
+                # Base wood color (light brown)
+                pygame.draw.rect(screen, (160, 120, 80), screen_rect)
+                
+                # Draw darker wood grain lines (horizontal planks)
+                plank_color = (120, 90, 60)
+                for i in range(4):
+                    y_offset = i * 16
+                    pygame.draw.line(screen, plank_color,
+                                   (screen_rect.x, screen_rect.y + y_offset),
+                                   (screen_rect.x + screen_rect.width, screen_rect.y + y_offset), 2)
+                
+                # Draw vertical wood grain details
+                for i in range(5):
+                    x_offset = i * 13
+                    pygame.draw.line(screen, plank_color,
+                                   (screen_rect.x + x_offset, screen_rect.y),
+                                   (screen_rect.x + x_offset, screen_rect.y + screen_rect.height), 1)
+                
+                # Draw nails/bolts at corners
+                nail_color = (80, 80, 80)
+                pygame.draw.circle(screen, nail_color,
+                                 (screen_rect.x + 8, screen_rect.y + 8), 3)
+                pygame.draw.circle(screen, nail_color,
+                                 (screen_rect.x + screen_rect.width - 8, screen_rect.y + 8), 3)
+                pygame.draw.circle(screen, nail_color,
+                                 (screen_rect.x + 8, screen_rect.y + screen_rect.height - 8), 3)
+                pygame.draw.circle(screen, nail_color,
+                                 (screen_rect.x + screen_rect.width - 8, screen_rect.y + screen_rect.height - 8), 3)
+                
+                # Draw border for temporary look
+                pygame.draw.rect(screen, (100, 70, 40), screen_rect, 2)
 
         # Draw platform tiles (one-way platforms)
         for rect in self.one_way_tiles:

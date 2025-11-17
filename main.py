@@ -215,8 +215,13 @@ class Game:
                 bullet_rect = bullet.get_rect()
                 for enemy in self.enemies:
                     if enemy.active and bullet_rect.colliderect(enemy.get_rect()):
+                        was_boss = isinstance(enemy, BossEnemy)
                         enemy.take_damage(bullet.damage)
                         bullet.hit()
+                        
+                        # If boss was defeated, remove boss tiles
+                        if was_boss and not enemy.is_alive():
+                            self.level.remove_boss_tiles()
                         break
             
             # Update level

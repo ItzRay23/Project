@@ -143,46 +143,14 @@ class LevelSelect:
         self.button_font = pygame.font.Font(None, 40)
         self.info_font = pygame.font.Font(None, 28)
         
-        # Level data
-        self.levels = [
-            {"name": "Level 1", "file": "levels/level1.csv", "unlocked": True},
-            {"name": "Level 2", "file": "levels/level2.csv", "unlocked": False},
-            {"name": "Level 3", "file": "levels/level3.csv", "unlocked": False},
-        ]
+        # Dynamically discover levels from the levels folder
+        self.levels = self.discover_levels()
         
         # Load progress
         self.load_progress()
         
         # Create level buttons
-        self.level_buttons = []
-        button_width = 250
-        button_height = 80
-        spacing = 120
-        start_y = 200
-        
-        for i, level in enumerate(self.levels):
-            button_x = (screen_width - button_width) // 2
-            button_y = start_y + i * spacing
-            
-            # Different colors for locked/unlocked levels
-            if level["unlocked"]:
-                color = (50, 100, 150)
-                hover_color = (80, 130, 200)
-            else:
-                color = (70, 70, 70)
-                hover_color = (90, 90, 90)
-            
-            button = Button(
-                button_x,
-                button_y,
-                button_width,
-                button_height,
-                level["name"],
-                self.button_font,
-                color=color,
-                hover_color=hover_color
-            )
-            self.level_buttons.append(button)
+        self.create_level_buttons()
         
         # Back button
         self.back_button = Button(
@@ -246,6 +214,104 @@ class LevelSelect:
             color=(50, 150, 50),
             hover_color=(80, 200, 80)
         )
+    
+    def discover_levels(self):
+        """Dynamically discover all level CSV files in the levels folder."""
+        levels = []
+        levels_dir = "levels"
+        
+        try:
+            # Check if levels directory exists
+            if not os.path.exists(levels_dir):
+                print(f"Warning: '{levels_dir}' directory not found")
+                return [{"name": "Level 1", "file": "levels/level1.csv", "unlocked": True}]
+            
+            # Get all CSV files in the levels directory
+            csv_files = sorted([f for f in os.listdir(levels_dir) if f.endswith('.csv')])
+            
+            if not csv_files:
+                print(f"Warning: No CSV files found in '{levels_dir}'")
+                return [{"name": "Level 1", "file": "levels/level1.csv", "unlocked": True}]
+            
+            # Create level entries for each CSV file
+            for i, filename in enumerate(csv_files):
+                # Extract level number or name from filename
+                level_name = os.path.splitext(filename)[0].replace('_', ' ').title()
+                
+                # Try to extract number from filename for better naming
+                import re
+                match = re.search(r'\d+', filename)
+                if match:
+                    level_num = match.group()
+                    level_name = f"Level {level_num}"
+                
+                levels.append({
+                    "name": level_name,
+                    "file": f"{levels_dir}/{filename}",
+                    "unlocked": i == 0  # Only first level unlocked by default
+                })
+            
+            print(f"Discovered {len(levels)} levels: {[l['name'] for l in levels]}")
+            
+        except Exception as e:
+            print(f"Error discovering levels: {e}")
+            # Fallback to default level
+            return [{"name": "Level 1", "file": "levels/level1.csv", "unlocked": True}]
+        
+        return levels
+    
+    def create_level_buttons(self):
+        """Create buttons for all discovered levels."""
+        self.level_buttons = []
+        button_width = 250
+        button_height = 80
+        
+        # Calculate spacing and positioning based on number of levels
+        num_levels = len(self.levels)
+        
+        # Adjust spacing if there are many levels
+        if num_levels <= 3:
+            spacing = 120
+            start_y = 200
+        elif num_levels <= 5:
+            spacing = 100
+            start_y = 180
+        else:
+            # For many levels, use smaller spacing and arrange in columns
+            spacing = 90
+            start_y = 150
+        
+        for i, level in enumerate(self.levels):
+            # For more than 6 levels, arrange in two columns
+            if num_levels > 6:
+                col = i % 2
+                row = i // 2
+                button_x = (self.screen_width // 2 - button_width - 20) if col == 0 else (self.screen_width // 2 + 20)
+                button_y = start_y + row * spacing
+            else:
+                # Single column for 6 or fewer levels
+                button_x = (self.screen_width - button_width) // 2
+                button_y = start_y + i * spacing
+            
+            # Different colors for locked/unlocked levels
+            if level["unlocked"]:
+                color = (50, 100, 150)
+                hover_color = (80, 130, 200)
+            else:
+                color = (70, 70, 70)
+                hover_color = (90, 90, 90)
+            
+            button = Button(
+                button_x,
+                button_y,
+                button_width,
+                button_height,
+                level["name"],
+                self.button_font,
+                color=color,
+                hover_color=hover_color
+            )
+            self.level_buttons.append(button)
     
     def load_progress(self):
         """Load level progress from file."""
