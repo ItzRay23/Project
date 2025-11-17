@@ -1,17 +1,39 @@
-# 2D Platformer Game
+# Echoes of Lyra - 2D Platformer Game
 
-A 2D platformer game built with pygame featuring physics-based movement, multiple enemy types, and CSV-based level design.
+A 2D platformer game built with pygame featuring physics-based movement, multiple enemy types, CSV-based level design, and a menu system with level progression.
 
 ## Project Structure
 
-- `main.py` - Main game class with game loop, camera system, and collision handling
+- `main.py` - Main game class with game loop, camera system, menu states, and level progression
 - `player.py` - Player class with platformer physics, heart-based health, and invulnerability frames
 - `enemy.py` - Base enemy class with three specialized enemy types and AI behaviors
 - `level.py` - CSV-based level loader with tile system and decoration generation
-- `levels/level1.csv` - Level data file defining platforms, enemies, and collectibles
+- `menu.py` - Menu system with main menu, level select, and progression tracking
+- `levels/` - Directory containing level CSV files (level1.csv, level2.csv, level3.csv)
+- `assets/` - Game assets including title image
 - `requirements.txt` - Python dependencies
 
+## How to Play
+
+1. **Main Menu**: Click "PLAY" to go to level select, or "QUIT" to exit
+2. **Level Select**: Choose from 3 levels (complete previous level to unlock next)
+3. **In-Game Controls**:
+   - Movement: WASD or Arrow Keys
+   - Jump: Space, W, or Up Arrow
+   - Pause/Back: ESC
+   - Restart (on death): R
+4. **Objective**: Collect all items in each level to complete it and unlock the next level
+
 ## Features Implemented
+
+### Menu System (`menu.py`)
+
+- **Main Menu**: Title screen with Play and Quit buttons
+- **Level Select**: Choose between 3 levels with lock/unlock system
+- **Progression Tracking**: Progress saved to `progress.json`
+- **Level Unlock System**: Complete Level N to unlock Level N+1
+- **Visual Feedback**: Locked levels shown with lock icon and grayed out
+- **Navigation**: ESC key returns to previous menu, ENTER continues after level completion
 
 ### Player System (`player.py`)
 
