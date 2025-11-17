@@ -37,6 +37,10 @@ class Player(pygame.sprite.Sprite):
         self.on_ground = False
         self.can_jump = True
         
+        # Double jump mechanic
+        self.has_double_jump = True  # Can use double jump
+        self.jump_key_was_pressed = False  # Track jump key state for edge detection
+        
         # Damage immunity
         self.invulnerable = False
         self.invulnerable_time = 0
@@ -119,11 +123,22 @@ class Player(pygame.sprite.Sprite):
             if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
                 self.velocity_x = self.speed
         
-        # Handle jumping
-        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground and self.can_jump:
-            self.velocity_y = self.jump_speed
-            self.on_ground = False
-            self.can_jump = False
+        # Handle jumping (ground jump and double jump)
+        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+        
+        if jump_pressed and not self.jump_key_was_pressed:
+            # Jump key just pressed (edge detection)
+            if self.on_ground and self.can_jump:
+                # Ground jump
+                self.velocity_y = self.jump_speed
+                self.on_ground = False
+                self.can_jump = False
+            elif not self.on_ground and self.has_double_jump:
+                # Double jump (air jump)
+                self.velocity_y = self.jump_speed
+                self.has_double_jump = False
+        
+        self.jump_key_was_pressed = jump_pressed
         
         # Apply gravity
         if not self.on_ground:
@@ -193,8 +208,10 @@ class Player(pygame.sprite.Sprite):
         # Update last grounded time when touching ground
         if self.on_ground:
             self.last_grounded_time = pygame.time.get_ticks()
+            # Reset double jump when landing
+            self.has_double_jump = True
     
-    def draw(self, screen, camera_x=0, camera_y=0):
+    def draw(self, screen, camera_x=0, camera_y=0, total_crystals=0, collected_crystals=0):
         """Draw the player to the screen with camera offset."""
         # Flash player when invulnerable
         if self.invulnerable:
@@ -214,8 +231,9 @@ class Player(pygame.sprite.Sprite):
         # Draw hearts (UI elements stay in fixed position)
         self.draw_hearts(screen)
         
-        # Draw dash indicator
-        self.draw_dash_indicator(screen)
+        # Draw crystals UI
+        if total_crystals > 0:
+            self.draw_crystals(screen, total_crystals, collected_crystals)
         
         # Draw dash indicator
         self.draw_dash_indicator(screen)
@@ -245,6 +263,44 @@ class Player(pygame.sprite.Sprite):
                     (x, y + 10), (x + 8, y + 18), (x + 16, y + 10),
                     (x + 16, y + 6), (x + 12, y + 2)
                 ], 2)
+    
+    def draw_crystals(self, screen, total_crystals, collected_crystals):
+        """Draw crystal collection status (similar to hearts)."""
+        crystal_size = 16
+        crystal_spacing = 22
+        start_x = 10
+        start_y = 85  # Below level name
+        
+        for i in range(total_crystals):
+            x = start_x + i * crystal_spacing
+            y = start_y
+            
+            # Rhombus points: top, right, bottom, left
+            center_x = x + crystal_size // 2
+            center_y = y + crystal_size // 2
+            half_size = crystal_size // 2
+            
+            points = [
+                (center_x, center_y - half_size),      # top
+                (center_x + half_size, center_y),       # right
+                (center_x, center_y + half_size),       # bottom
+                (center_x - half_size, center_y)        # left
+            ]
+            
+            if i < collected_crystals:
+                # Collected crystal (filled cyan)
+                pygame.draw.polygon(screen, (0, 255, 255), points)
+                pygame.draw.polygon(screen, (0, 150, 200), points, 2)
+                # Add shine
+                shine = [
+                    (center_x - half_size // 3, center_y - half_size // 3),
+                    (center_x, center_y - half_size // 2),
+                    (center_x - half_size // 4, center_y)
+                ]
+                pygame.draw.polygon(screen, (200, 255, 255), shine)
+            else:
+                # Uncollected crystal (outline only, gray)
+                pygame.draw.polygon(screen, (128, 128, 128), points, 2)
     
     def draw_dash_indicator(self, screen):
         """Draw dash availability indicator."""
@@ -322,7 +378,8 @@ class Player(pygame.sprite.Sprite):
     
     def take_damage(self, damage=1):
         """Reduce player hearts by damage amount."""
-        if not self.invulnerable and self.hearts > 0:
+        # Player is immune to damage while dashing or during invulnerability frames
+        if not self.invulnerable and not self.is_dashing and self.hearts > 0:
             self.hearts -= damage
             if self.hearts < 0:
                 self.hearts = 0
@@ -361,3 +418,4 @@ class Player(pygame.sprite.Sprite):
         self.invulnerable = False
         self.is_dashing = False
         self.dash_direction = 0
+        self.has_double_jump = True

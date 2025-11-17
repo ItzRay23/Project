@@ -207,29 +207,68 @@ class Level:
         if self.exit_rect:
             screen_rect = pygame.Rect(self.exit_rect.x - camera_x, self.exit_rect.y - camera_y, 
                                      self.exit_rect.width, self.exit_rect.height)
+            
+            # Check if all collectibles are collected
+            total = len(self.collectibles)
+            collected = sum(1 for it in self.collectibles if it['collected'])
+            all_collected = (total == 0) or (collected == total)
+            
             # Draw door frame (dark wood)
             pygame.draw.rect(screen, (101, 67, 33), screen_rect)
-            # Draw door (lighter wood)
+            
+            # Draw door (lighter wood or locked gray)
             door_inner = pygame.Rect(screen_rect.x + 4, screen_rect.y + 4, 
                                     screen_rect.width - 8, screen_rect.height - 8)
-            pygame.draw.rect(screen, (139, 90, 43), door_inner)
+            if all_collected:
+                pygame.draw.rect(screen, (139, 90, 43), door_inner)  # Unlocked - brown
+            else:
+                pygame.draw.rect(screen, (100, 100, 100), door_inner)  # Locked - gray
+            
             # Draw door handle
             handle_x = screen_rect.x + screen_rect.width - 15
             handle_y = screen_rect.y + screen_rect.height // 2
-            pygame.draw.circle(screen, (218, 165, 32), (handle_x, handle_y), 4)
-            # Draw "EXIT" text
+            handle_color = (218, 165, 32) if all_collected else (150, 150, 150)
+            pygame.draw.circle(screen, handle_color, (handle_x, handle_y), 4)
+            
+            # Draw lock icon or "EXIT" text
             font = pygame.font.Font(None, 24)
-            text = font.render("EXIT", True, (255, 255, 255))
+            if all_collected:
+                text = font.render("EXIT", True, (255, 255, 255))
+            else:
+                # Draw lock symbol
+                text = font.render("LOCKED", True, (200, 200, 200))
             text_rect = text.get_rect(center=(screen_rect.centerx, screen_rect.centery))
             screen.blit(text, text_rect)
         
-        # Draw collectibles
+        # Draw collectibles (crystals)
         for item in self.collectibles:
             if item['collected']:
                 continue
             rect = item['rect']
-            screen_rect = pygame.Rect(rect.x - camera_x, rect.y - camera_y, rect.width, rect.height)
-            pygame.draw.ellipse(screen, (255, 215, 0), screen_rect)  # Gold coin
+            # Draw rhombus crystal
+            center_x = rect.centerx - camera_x
+            center_y = rect.centery - camera_y
+            half_w = rect.width // 2
+            half_h = rect.height // 2
+            
+            # Rhombus points: top, right, bottom, left
+            crystal_points = [
+                (center_x, center_y - half_h),  # top
+                (center_x + half_w, center_y),   # right
+                (center_x, center_y + half_h),   # bottom
+                (center_x - half_w, center_y)    # left
+            ]
+            # Draw filled crystal (cyan/light blue)
+            pygame.draw.polygon(screen, (0, 255, 255), crystal_points)
+            # Draw crystal outline (darker blue)
+            pygame.draw.polygon(screen, (0, 150, 200), crystal_points, 2)
+            # Add shine effect
+            shine_points = [
+                (center_x - half_w // 3, center_y - half_h // 3),
+                (center_x, center_y - half_h // 2),
+                (center_x - half_w // 4, center_y)
+            ]
+            pygame.draw.polygon(screen, (200, 255, 255), shine_points)
         
         # Draw enemy spawn points (for debugging/development)
         # Uncomment this section if you want to see spawn markers visually
@@ -247,6 +286,12 @@ class Level:
     def get_enemy_spawn_positions(self):
         """Return enemy spawn positions from CSV markers."""
         return self.enemy_spawns.copy()  # Return a copy to prevent external modification
+    
+    def is_exit_unlocked(self):
+        """Check if all collectibles are collected to unlock the exit."""
+        total = len(self.collectibles)
+        collected = sum(1 for it in self.collectibles if it['collected'])
+        return (total == 0) or (collected == total)
     
     def get_highest_ground_y(self, x_position):
         """Get the Y position of the highest ground or platform near the given x position.

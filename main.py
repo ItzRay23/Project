@@ -99,10 +99,17 @@ class Game:
         self.state = "playing"
     
     def check_level_complete(self):
-        """Check if player has reached the exit door."""
+        """Check if player has reached the exit door after collecting all items."""
         if self.level and self.level.exit_rect:
-            player_rect = self.player.get_rect()
-            return player_rect.colliderect(self.level.exit_rect)
+            # Check if all collectibles are collected
+            total = len(self.level.collectibles)
+            collected = sum(1 for it in self.level.collectibles if it['collected'])
+            all_collected = (total == 0) or (collected == total)
+            
+            # Only complete if all items collected AND player touches exit
+            if all_collected:
+                player_rect = self.player.get_rect()
+                return player_rect.colliderect(self.level.exit_rect)
         return False
     
     def complete_level(self):
@@ -234,8 +241,10 @@ class Game:
             # Draw level (background and platforms) with camera offset
             self.level.draw(self.screen, self.camera_x, self.camera_y)
             
-            # Draw player with camera offset
-            self.player.draw(self.screen, self.camera_x, self.camera_y)
+            # Draw player with camera offset (pass collectibles for crystal UI)
+            total_crystals = len(self.level.collectibles)
+            collected_crystals = sum(1 for it in self.level.collectibles if it['collected'])
+            self.player.draw(self.screen, self.camera_x, self.camera_y, total_crystals, collected_crystals)
             
             # Draw enemies with camera offset
             for enemy in self.enemies:
@@ -251,12 +260,7 @@ class Game:
                 level_text = self.font.render(level_name, True, (255, 255, 255))
                 self.screen.blit(level_text, (10, 45))
                 
-                # Draw collectibles HUD (optional - collectibles now for bonus only)
-                total = len(self.level.collectibles)
-                collected = sum(1 for it in self.level.collectibles if it['collected'])
-                if total > 0:
-                    hud_text = self.font.render(f"Bonus: {collected}/{total}", True, (255, 215, 0))
-                    self.screen.blit(hud_text, (10, 85))
+                # Crystal UI is now drawn by player.draw() method
         
         elif self.state == "level_complete":
             self.draw_level_complete()
