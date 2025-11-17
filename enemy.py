@@ -722,10 +722,17 @@ class BossEnemy(Enemy):
             self.current_attack = self.choose_attack()
             
             if self.current_attack == 'jump_shoot':
-                self.jump_shoot_state = 'jumping'
-                self.velocity_y = self.jump_force
+                self.jump_shoot_state = 'rising'
                 self.jump_shoot_bullets_fired = 0
                 self.jump_shoot_fire_timer = 0
+                # Store target position (above player)
+                if player_pos:
+                    target_x = player_pos[0] - self.width // 2  # Center above player
+                    target_y = player_pos[1] - 150  # 150 pixels above player
+                else:
+                    target_x = self.rect.x
+                    target_y = self.rect.y - 150
+                self.jump_shoot_target = (target_x, target_y)
                 
             elif self.current_attack == 'jump_slam':
                 self.jump_slam_state = 'jumping'
@@ -743,11 +750,11 @@ class BossEnemy(Enemy):
         
         # Execute current attack
         if self.current_attack == 'jump_shoot':
-            self.execute_jump_shoot(solid_tiles, one_way_tiles, level_height, level_width)
+            self.execute_jump_shoot(solid_tiles, one_way_tiles, level_height, level_width, player_pos)
         elif self.current_attack == 'jump_slam':
             self.execute_jump_slam(solid_tiles, one_way_tiles, level_height, level_width)
         elif self.current_attack == 'ultimate':
-            self.execute_ultimate(level_height, level_width)
+            self.execute_ultimate(solid_tiles, one_way_tiles, level_height, level_width)
         else:
             # Normal movement when not attacking
             self.normal_movement(solid_tiles, one_way_tiles, level_height, level_width)
@@ -779,29 +786,51 @@ class BossEnemy(Enemy):
         self.rect.y += self.velocity_y
         self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
     
-    def execute_jump_shoot(self, solid_tiles, one_way_tiles, level_height, level_width):
-        """Execute jump and shoot 3 bullets attack."""
-        if self.jump_shoot_state == 'jumping':
-            # Apply gravity while jumping
-            self.velocity_y += self.gravity
-            if self.velocity_y > self.max_fall_speed:
-                self.velocity_y = self.max_fall_speed
-            
-            self.rect.y += self.velocity_y
-            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
-            
-            # When reaching apex or landing, start shooting
-            if self.velocity_y >= 0:  # Starting to fall or on ground
-                self.jump_shoot_state = 'shooting'
+    def execute_jump_shoot(self, solid_tiles, one_way_tiles, level_height, level_width, player_pos=None):
+        """Execute jump and shoot attack: rise above player, hover and shoot, then fall."""
+        # Stop velocities during controlled movement
+        self.velocity_x = 0
+        self.velocity_y = 0
         
-        elif self.jump_shoot_state == 'shooting':
-            # Apply gravity while shooting
-            self.velocity_y += self.gravity
-            if self.velocity_y > self.max_fall_speed:
-                self.velocity_y = self.max_fall_speed
+        if self.jump_shoot_state == 'rising':
+            # Continuously update target X position to follow player
+            if player_pos:
+                target_x = player_pos[0] - self.width // 2  # Center above player
+                target_y = player_pos[1] - 150  # 150 pixels above player
+                self.jump_shoot_target = (target_x, target_y)
             
-            self.rect.y += self.velocity_y
-            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            target_x, target_y = self.jump_shoot_target
+            
+            # Move horizontally toward player's current X position
+            if abs(self.rect.x - target_x) > 5:
+                if self.rect.x < target_x:
+                    self.rect.x += 5
+                else:
+                    self.rect.x -= 5
+            
+            # Move vertically toward target
+            if self.rect.y > target_y:
+                self.rect.y -= 5
+            else:
+                # Reached hover position, start shooting
+                self.jump_shoot_state = 'hovering'
+        
+        elif self.jump_shoot_state == 'hovering':
+            # Continuously follow player's X position while hovering
+            if player_pos:
+                target_x = player_pos[0] - self.width // 2  # Center above player
+                # Smoothly move toward player's X position
+                if abs(self.rect.x - target_x) > 3:
+                    if self.rect.x < target_x:
+                        self.rect.x += 3
+                    else:
+                        self.rect.x -= 3
+                else:
+                    self.rect.x = target_x
+            
+            # Maintain hover height
+            _, target_y = self.jump_shoot_target
+            self.rect.y = target_y
             
             # Fire bullets
             self.jump_shoot_fire_timer += 1
@@ -810,11 +839,26 @@ class BossEnemy(Enemy):
                 self.jump_shoot_bullets_fired += 1
                 self.jump_shoot_fire_timer = 0
             
-            # After firing all bullets and landing, end attack
-            if self.jump_shoot_bullets_fired >= 3 and self.on_ground:
+            # After firing all bullets, start falling
+            if self.jump_shoot_bullets_fired >= 3:
+                self.jump_shoot_state = 'falling'
+        
+        elif self.jump_shoot_state == 'falling':
+            # Apply gravity and fall back down
+            self.velocity_y += self.gravity
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+            
+            self.rect.y += self.velocity_y
+            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            
+            # When landing, end attack
+            if self.on_ground:
                 self.current_attack = None
                 self.jump_shoot_state = None
                 self.attack_cooldown = self.min_attack_cooldown
+                self.velocity_x = 0
+                self.velocity_y = 0
     
     def fire_bullet_spread(self):
         """Fire 3 bullets in a spread pattern."""
@@ -834,7 +878,10 @@ class BossEnemy(Enemy):
             self.bullets.add(bullet)
     
     def execute_jump_slam(self, solid_tiles, one_way_tiles, level_height, level_width):
-        """Execute jump and slam with horizontal projectiles."""
+        """Execute jump and slam with horizontal projectiles shot while in air."""
+        # Stop horizontal movement during attack
+        self.velocity_x = 0
+        
         if self.jump_slam_state == 'jumping':
             # Apply gravity
             self.velocity_y += self.gravity * 1.5  # Fall faster for slam
@@ -844,23 +891,35 @@ class BossEnemy(Enemy):
             self.rect.y += self.velocity_y
             self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
             
-            # When landing, create horizontal projectiles
+            # Shoot bullets while falling (in the air)
+            if self.velocity_y > 0 and not self.slam_bullets_created:  # Falling downward
+                self.create_slam_projectiles()
+                self.slam_bullets_created = True
+            
+            # When landing, go to recovery state
             if self.on_ground:
                 self.jump_slam_state = 'slamming'
         
         elif self.jump_slam_state == 'slamming':
-            if not self.slam_bullets_created:
-                self.create_slam_projectiles()
-                self.slam_bullets_created = True
+            # Stay on ground during recovery
+            self.velocity_x = 0
+            self.velocity_y = 0
+            
+            # Initialize recovery timer when entering this state
+            if self.slam_recovery_timer == 0:
                 self.slam_recovery_timer = 30  # 0.5 second recovery
             
-            # Recovery period
-            if self.slam_recovery_timer > 0:
-                self.slam_recovery_timer -= 1
-            else:
+            # Count down recovery
+            self.slam_recovery_timer -= 1
+            
+            # End attack when recovery is complete
+            if self.slam_recovery_timer <= 0:
                 self.current_attack = None
                 self.jump_slam_state = None
+                self.slam_recovery_timer = 0  # Reset for next attack
                 self.attack_cooldown = self.min_attack_cooldown
+                self.velocity_x = 0
+                self.velocity_y = 0
     
     def create_slam_projectiles(self):
         """Create horizontal projectiles on both sides after slam."""
@@ -876,9 +935,13 @@ class BossEnemy(Enemy):
             bullet = BossBullet(self.rect.right, center_y + i * 8 - 8, 8, 0)
             self.bullets.add(bullet)
     
-    def execute_ultimate(self, level_height, level_width):
+    def execute_ultimate(self, solid_tiles, one_way_tiles, level_height, level_width):
         """Execute ultimate attack: rise up and shoot bullets in circular pattern rapidly."""
         if self.ultimate_state == 'rising':
+            # Stop all movement
+            self.velocity_x = 0
+            self.velocity_y = 0
+            
             # Move upward to ultimate position
             target_x, target_y = self.ultimate_position
             
@@ -891,6 +954,7 @@ class BossEnemy(Enemy):
         
         elif self.ultimate_state == 'shooting':
             # Stay in place and shoot bullets in circle
+            self.velocity_x = 0
             self.velocity_y = 0
             
             self.ultimate_shoot_timer += 1
@@ -904,6 +968,9 @@ class BossEnemy(Enemy):
                 self.ultimate_state = 'descending'
         
         elif self.ultimate_state == 'descending':
+            # Stop horizontal movement
+            self.velocity_x = 0
+            
             # Fall back down
             self.velocity_y += self.gravity
             if self.velocity_y > self.max_fall_speed:
@@ -911,14 +978,16 @@ class BossEnemy(Enemy):
             
             self.rect.y += self.velocity_y
             
-            # When reaching ground level or below, end attack
-            if self.rect.bottom >= level_height - 50:  # Near ground
-                # Apply gravity and collision normally to land properly
-                if self.on_ground or self.rect.bottom >= level_height:
-                    self.velocity_y = 0
-                    self.current_attack = None
-                    self.ultimate_state = None
-                    self.attack_cooldown = self.min_attack_cooldown * 2  # Longer cooldown after ultimate
+            # Check collisions to detect landing
+            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            
+            # When landed on ground, end attack
+            if self.on_ground:
+                self.velocity_y = 0
+                self.velocity_x = 0
+                self.current_attack = None
+                self.ultimate_state = None
+                self.attack_cooldown = self.min_attack_cooldown * 2  # Longer cooldown after ultimate
     
     def fire_circular_bullet(self):
         """Fire a bullet in the current angle direction."""
