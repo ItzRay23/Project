@@ -46,10 +46,12 @@ class Player(pygame.sprite.Sprite):
         self.dash_speed = 15  # Speed during dash
         self.dash_duration = 200  # Duration of dash in milliseconds
         self.dash_cooldown = 500  # Cooldown between dashes in milliseconds
+        self.dash_grace_period = 100  # Time after leaving ground when dash is still allowed (milliseconds)
         self.is_dashing = False
         self.dash_start_time = 0
         self.last_dash_time = 0
         self.dash_direction = 0  # -1 for left, 1 for right, 0 for no dash
+        self.last_grounded_time = 0  # Track when player was last on ground
         
         # Double-tap detection
         self.last_left_press_time = 0
@@ -81,14 +83,14 @@ class Player(pygame.sprite.Sprite):
         # Remember previous position for one-way checks
         prev_rect = self.rect.copy()
 
-        # Check for double-tap dash (only when on ground and not already dashing)
-        if self.on_ground and not self.is_dashing:
-            can_dash = (current_time - self.last_dash_time) > self.dash_cooldown
+        # Check for double-tap dash (only when recently grounded and not already dashing)
+        if not self.is_dashing:
+            dash_available = self.can_dash()
             
             # Check for left double-tap
             left_pressed = keys[pygame.K_LEFT] or keys[pygame.K_a]
             if left_pressed and not self.left_key_was_pressed:
-                if can_dash and (current_time - self.last_left_press_time) < self.double_tap_window:
+                if dash_available and (current_time - self.last_left_press_time) < self.double_tap_window:
                     # Double-tap detected!
                     self.start_dash(-1)
                 self.last_left_press_time = current_time
@@ -97,7 +99,7 @@ class Player(pygame.sprite.Sprite):
             # Check for right double-tap
             right_pressed = keys[pygame.K_RIGHT] or keys[pygame.K_d]
             if right_pressed and not self.right_key_was_pressed:
-                if can_dash and (current_time - self.last_right_press_time) < self.double_tap_window:
+                if dash_available and (current_time - self.last_right_press_time) < self.double_tap_window:
                     # Double-tap detected!
                     self.start_dash(1)
                 self.last_right_press_time = current_time
@@ -187,6 +189,10 @@ class Player(pygame.sprite.Sprite):
             self.velocity_y = 0
             self.on_ground = True
             self.can_jump = True
+        
+        # Update last grounded time when touching ground
+        if self.on_ground:
+            self.last_grounded_time = pygame.time.get_ticks()
     
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the player to the screen with camera offset."""
@@ -276,16 +282,21 @@ class Player(pygame.sprite.Sprite):
                 fill_width = int((indicator_width - 4) * progress)
                 pygame.draw.rect(screen, (100, 100, 0), 
                                (indicator_x + 2, indicator_y + 2, fill_width, indicator_height - 4))
-            elif not self.on_ground:
-                # In air - show red bar
-                pygame.draw.rect(screen, (150, 0, 0), 
-                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+            else:
+                # Check if within grace period
+                current_time = pygame.time.get_ticks()
+                recently_grounded = (current_time - self.last_grounded_time) <= self.dash_grace_period
                 
-                # Draw "AIR" text
-                font = pygame.font.Font(None, 18)
-                text = font.render("AIR", True, (200, 200, 200))
-                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
-                screen.blit(text, text_rect)
+                if not recently_grounded:
+                    # In air beyond grace period - show red bar
+                    pygame.draw.rect(screen, (150, 0, 0), 
+                                   (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+                    
+                    # Draw "AIR" text
+                    font = pygame.font.Font(None, 18)
+                    text = font.render("AIR", True, (200, 200, 200))
+                    text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+                    screen.blit(text, text_rect)
         
         # Draw border
         pygame.draw.rect(screen, (200, 200, 200), 
@@ -295,7 +306,8 @@ class Player(pygame.sprite.Sprite):
         """Check if player can currently dash."""
         current_time = pygame.time.get_ticks()
         cooldown_ready = (current_time - self.last_dash_time) > self.dash_cooldown
-        return self.on_ground and not self.is_dashing and cooldown_ready
+        recently_grounded = (current_time - self.last_grounded_time) <= self.dash_grace_period
+        return recently_grounded and not self.is_dashing and cooldown_ready
     
     def start_dash(self, direction):
         """Start a dash in the given direction (-1 for left, 1 for right)."""

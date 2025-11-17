@@ -18,6 +18,7 @@ class Level:
     D -> dirt (solid, full collision, plain dirt appearance)
     P -> platform (one-way: collides only from above)
     C -> collectible (placed on top of tile)
+    E -> exit door (level completion point)
     B -> BasicEnemy spawn point
     J -> JumpingEnemy spawn point
     A -> AmbushEnemy spawn point
@@ -38,6 +39,7 @@ class Level:
         self.one_way_tiles = []  # list of pygame.Rect for P (platform)
         self.collectibles = []  # list of dicts: {'rect': Rect, 'collected': False}
         self.enemy_spawns = []  # list of dicts: {'x': x, 'y': y, 'type': enemy_type}
+        self.exit_rect = None  # pygame.Rect for E (exit door)
 
         # Level pixel dimensions (computed after loading CSV)
         self.width = 0
@@ -63,6 +65,7 @@ class Level:
         self.one_way_tiles = []
         self.collectibles = []
         self.enemy_spawns = []
+        self.exit_rect = None
 
         # Allow relative path
         base = os.path.dirname(os.path.abspath(__file__))
@@ -136,6 +139,9 @@ class Level:
                     spawn_x = x + self.tile_size // 2
                     spawn_y = y + self.tile_size // 2
                     self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'ambush'})
+                elif code == 'E':
+                    # Exit door - full tile size
+                    self.exit_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
     
     def generate_decorations(self):
         """Generate simple clouds and grass decorations."""
@@ -197,6 +203,26 @@ class Level:
             pygame.draw.rect(screen, (160, 82, 45), screen_rect)
             pygame.draw.rect(screen, (101, 67, 33), screen_rect, 2)
 
+        # Draw exit door
+        if self.exit_rect:
+            screen_rect = pygame.Rect(self.exit_rect.x - camera_x, self.exit_rect.y - camera_y, 
+                                     self.exit_rect.width, self.exit_rect.height)
+            # Draw door frame (dark wood)
+            pygame.draw.rect(screen, (101, 67, 33), screen_rect)
+            # Draw door (lighter wood)
+            door_inner = pygame.Rect(screen_rect.x + 4, screen_rect.y + 4, 
+                                    screen_rect.width - 8, screen_rect.height - 8)
+            pygame.draw.rect(screen, (139, 90, 43), door_inner)
+            # Draw door handle
+            handle_x = screen_rect.x + screen_rect.width - 15
+            handle_y = screen_rect.y + screen_rect.height // 2
+            pygame.draw.circle(screen, (218, 165, 32), (handle_x, handle_y), 4)
+            # Draw "EXIT" text
+            font = pygame.font.Font(None, 24)
+            text = font.render("EXIT", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(screen_rect.centerx, screen_rect.centery))
+            screen.blit(text, text_rect)
+        
         # Draw collectibles
         for item in self.collectibles:
             if item['collected']:
@@ -221,6 +247,29 @@ class Level:
     def get_enemy_spawn_positions(self):
         """Return enemy spawn positions from CSV markers."""
         return self.enemy_spawns.copy()  # Return a copy to prevent external modification
+    
+    def get_highest_ground_y(self, x_position):
+        """Get the Y position of the highest ground or platform near the given x position.
+        
+        Returns the top Y coordinate of the highest tile within a reasonable range of x_position.
+        If no ground is found, returns a default value near the bottom of the level.
+        """
+        search_range = 200  # Search within 200 pixels horizontally
+        highest_y = self.height - 100  # Default fallback position
+        
+        # Check solid tiles (ground and dirt)
+        for rect in self.solid_tiles:
+            if abs(rect.centerx - x_position) <= search_range:
+                if rect.top < highest_y:
+                    highest_y = rect.top
+        
+        # Check one-way platforms
+        for rect in self.one_way_tiles:
+            if abs(rect.centerx - x_position) <= search_range:
+                if rect.top < highest_y:
+                    highest_y = rect.top
+        
+        return highest_y
     
     def get_level_number(self):
         """Return the current level number."""

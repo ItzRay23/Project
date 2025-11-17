@@ -80,9 +80,10 @@ class Game:
         self.current_level_index = level_index
         self.level = Level(level_file, tile_size=64)
         
-        # Start player near the left side on top of the first available ground
+        # Start player near the left side, 20 pixels above the highest ground
         start_x = 100
-        start_y = self.level.height - 150
+        highest_ground_y = self.level.get_highest_ground_y(start_x)
+        start_y = highest_ground_y - 20  # Spawn 20 pixels above the ground
         self.player = Player(start_x, start_y)
         
         # Clear and spawn enemies
@@ -98,11 +99,10 @@ class Game:
         self.state = "playing"
     
     def check_level_complete(self):
-        """Check if all collectibles are collected."""
-        if self.level:
-            total = len(self.level.collectibles)
-            collected = sum(1 for it in self.level.collectibles if it['collected'])
-            return collected == total
+        """Check if player has reached the exit door."""
+        if self.level and self.level.exit_rect:
+            player_rect = self.player.get_rect()
+            return player_rect.colliderect(self.level.exit_rect)
         return False
     
     def complete_level(self):
@@ -251,11 +251,12 @@ class Game:
                 level_text = self.font.render(level_name, True, (255, 255, 255))
                 self.screen.blit(level_text, (10, 45))
                 
-                # Draw collectibles HUD (below level name)
+                # Draw collectibles HUD (optional - collectibles now for bonus only)
                 total = len(self.level.collectibles)
                 collected = sum(1 for it in self.level.collectibles if it['collected'])
-                hud_text = self.font.render(f"Collected: {collected}/{total}", True, (255, 255, 255))
-                self.screen.blit(hud_text, (10, 85))
+                if total > 0:
+                    hud_text = self.font.render(f"Bonus: {collected}/{total}", True, (255, 215, 0))
+                    self.screen.blit(hud_text, (10, 85))
         
         elif self.state == "level_complete":
             self.draw_level_complete()
