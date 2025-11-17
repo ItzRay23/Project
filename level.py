@@ -139,6 +139,11 @@ class Level:
                     spawn_x = x + self.tile_size // 2
                     spawn_y = y + self.tile_size // 2
                     self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'ambush'})
+                elif code == 'Z':
+                    # BossEnemy spawn point
+                    spawn_x = x + self.tile_size // 2
+                    spawn_y = y + self.tile_size // 2
+                    self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'boss'})
                 elif code == 'E':
                     # Exit door - full tile size
                     self.exit_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)

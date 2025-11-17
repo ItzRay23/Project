@@ -7,7 +7,7 @@ import pygame
 import sys
 import random
 from player import Player
-from enemy import BasicEnemy, JumpingEnemy, AmbushEnemy
+from enemy import BasicEnemy, JumpingEnemy, AmbushEnemy, BossEnemy
 from level import Level
 from menu import MainMenu, LevelSelect
 from bullet import Bullet
@@ -71,6 +71,8 @@ class Game:
                 enemy = AmbushEnemy(spawn['x'], spawn['y'], solid_tiles, one_way_tiles)
             elif enemy_type == 'jumping':
                 enemy = JumpingEnemy(spawn['x'], spawn['y'])
+            elif enemy_type == 'boss':
+                enemy = BossEnemy(spawn['x'], spawn['y'])
             else:  # basic or unknown types
                 enemy = BasicEnemy(spawn['x'], spawn['y'])
             
@@ -194,7 +196,7 @@ class Game:
             # Update enemies
             player_pos = self.player.get_position()
             for enemy in self.enemies:
-                if isinstance(enemy, AmbushEnemy):
+                if isinstance(enemy, AmbushEnemy) or isinstance(enemy, BossEnemy):
                     enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width, player_pos)
                 else:
                     enemy.update(solid_tiles, one_way_tiles, self.level.height, self.level.width)
@@ -226,6 +228,16 @@ class Game:
                 if enemy.active and player_rect.colliderect(enemy.get_rect()):
                     self.player.take_damage(1)
                     break  # Only take damage from one enemy per frame
+            
+            # Check boss bullet collisions with player
+            for enemy in self.enemies:
+                if isinstance(enemy, BossEnemy) and enemy.active:
+                    boss_bullets = enemy.get_bullets()
+                    for boss_bullet in boss_bullets:
+                        if boss_bullet.active and player_rect.colliderect(boss_bullet.get_rect()):
+                            self.player.take_damage(boss_bullet.damage)
+                            boss_bullet.hit()
+                            break
 
             # Check collectible pickups
             for item in self.level.collectibles:

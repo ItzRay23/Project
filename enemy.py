@@ -65,6 +65,34 @@ class Enemy(pygame.sprite.Sprite):
         # Restore position after creating new rect
         self.rect.x = old_x
         self.rect.y = old_y
+        
+        # Draw eye on the enemy
+        self.draw_eye_on_sprite()
+    
+    def draw_eye_on_sprite(self):
+        """Draw a simple white square eye on the enemy sprite"""
+        # Position eye near the head area
+        eye_size = 6  # Small square
+        eye_x = self.width // 2 - eye_size // 2  # Center horizontally
+        eye_y = 8  # Near the top (head area)
+        
+        # Offset eye based on movement direction
+        offset = 6  # Pixels to offset
+        
+        # Horizontal offset based on direction
+        if self.direction > 0:  # Moving right
+            eye_x += offset
+        else:  # Moving left
+            eye_x -= offset
+        
+        # Vertical offset based on velocity
+        if self.velocity_y < 0:  # Moving up (jumping)
+            eye_y -= offset
+        elif self.velocity_y > 0:  # Moving down (falling)
+            eye_y += offset
+        
+        # Draw white square eye directly on the sprite
+        pygame.draw.rect(self.image, (255, 255, 255), (eye_x, eye_y, eye_size, eye_size))
     
     def get_movement_behavior(self):
         """Get movement behavior for this enemy type. Override in subclasses."""
@@ -153,6 +181,10 @@ class Enemy(pygame.sprite.Sprite):
         if not self.active:
             return
         
+        # Recreate visual (including eye) each frame to reflect current state
+        self.image.fill(self.color)
+        self.draw_eye_on_sprite()
+        
         # Draw enemy with camera offset
         screen_pos = (self.rect.x - camera_x, self.rect.y - camera_y)
         screen.blit(self.image, screen_pos)
@@ -228,6 +260,7 @@ class AmbushEnemy(Enemy):
     def __init__(self, x, y, solid_tiles=None, one_way_tiles=None):
         super().__init__(x, y)
         self.detection_range = 500  # How far the enemy can detect the player
+        self.max_dash_distance = 500  # Maximum distance the enemy can dash
         self.is_attacking = False
         self.attack_cooldown = 0
         self.max_attack_cooldown = 180  # 3 seconds at 60fps
@@ -236,6 +269,7 @@ class AmbushEnemy(Enemy):
         self.is_returning = False
         self.has_gravity = False  # This enemy ignores gravity
         self.hanging_position = None  # Position where enemy hangs from platform
+        self.attack_start_position = None  # Position where dash attack started
         self.target_position = None  # Where the player was detected (dash target)
         self.is_staying = False  # Whether enemy is staying at target position
         self.stay_timer = 0  # Timer for staying at target position
@@ -374,12 +408,28 @@ class AmbushEnemy(Enemy):
                 
                 self.is_attacking = True
                 
+                # Store starting position for distance limiting
+                self.attack_start_position = (self.rect.centerx, self.rect.centery)
+                
                 # Store the center position of the player (assuming player is 32x48)
                 # This makes the ambush target the player's center instead of top-left corner
                 player_width = 32
                 player_height = 48
                 player_center_x = player_x + player_width // 2
                 player_center_y = player_y + player_height // 2
+                
+                # Limit target position to max_dash_distance from starting position
+                target_distance_x = player_center_x - self.rect.centerx
+                target_distance_y = player_center_y - self.rect.centery
+                target_total_distance = math.sqrt(target_distance_x ** 2 + target_distance_y ** 2)
+                
+                # If target is beyond max dash distance, clamp it
+                if target_total_distance > self.max_dash_distance:
+                    # Scale down to max_dash_distance
+                    scale = self.max_dash_distance / target_total_distance
+                    player_center_x = self.rect.centerx + target_distance_x * scale
+                    player_center_y = self.rect.centery + target_distance_y * scale
+                
                 self.target_position = (player_center_x, player_center_y)
                 
                 # Calculate dash direction towards the player's CENTER position
@@ -397,25 +447,54 @@ class AmbushEnemy(Enemy):
                 self.attack_cooldown = self.max_attack_cooldown
         
         # If attacking, dash towards the target position
-        if self.is_attacking and self.target_position:
+        if self.is_attacking and self.target_position and self.attack_start_position:
             target_x, target_y = self.target_position
+            start_x, start_y = self.attack_start_position
+            
+            # Calculate distance from starting position (for range limit)
+            distance_from_start_x = self.rect.centerx - start_x
+            distance_from_start_y = self.rect.centery - start_y
+            distance_from_start = math.sqrt(distance_from_start_x ** 2 + distance_from_start_y ** 2)
             
             # Calculate distance to target
             distance_to_target_x = target_x - self.rect.centerx
             distance_to_target_y = target_y - self.rect.centery
             distance_to_target = math.sqrt(distance_to_target_x ** 2 + distance_to_target_y ** 2)
             
-            # If we're close enough to the target, stop attacking and start staying
-            if distance_to_target <= 20:  # Within 20 pixels of target
+            # Stop if we've reached the target OR exceeded max dash distance
+            if distance_to_target <= 20 or distance_from_start >= self.max_dash_distance:
                 self.is_attacking = False
                 self.is_staying = True
                 self.stay_timer = self.stay_duration
                 self.velocity_x = 0
                 self.velocity_y = 0
+                self.attack_start_position = None
             else:
-                # Continue moving towards target
-                self.rect.x += self.velocity_x
-                self.rect.y += self.velocity_y
+                # Check if next movement would overshoot the target
+                next_x = self.rect.x + self.velocity_x
+                next_y = self.rect.y + self.velocity_y
+                next_center_x = next_x + self.width // 2
+                next_center_y = next_y + self.height // 2
+                
+                next_distance_to_target_x = target_x - next_center_x
+                next_distance_to_target_y = target_y - next_center_y
+                next_distance_to_target = math.sqrt(next_distance_to_target_x ** 2 + next_distance_to_target_y ** 2)
+                
+                # If we would overshoot, just snap to target
+                if next_distance_to_target > distance_to_target:
+                    # We're about to overshoot, snap to target instead
+                    self.rect.centerx = target_x
+                    self.rect.centery = target_y
+                    self.is_attacking = False
+                    self.is_staying = True
+                    self.stay_timer = self.stay_duration
+                    self.velocity_x = 0
+                    self.velocity_y = 0
+                    self.attack_start_position = None
+                else:
+                    # Continue moving towards target
+                    self.rect.x += self.velocity_x
+                    self.rect.y += self.velocity_y
         
         # If staying at target position for a few seconds
         elif self.is_staying:
@@ -511,3 +590,359 @@ class JumpingEnemy(Enemy):
             self.jump_interval = random.randint(90, 150)
         
         return self.direction * self.speed
+
+
+class BossBullet(pygame.sprite.Sprite):
+    """Boss bullet projectile."""
+    
+    def __init__(self, x, y, velocity_x, velocity_y):
+        """Initialize a boss bullet with specific velocity."""
+        super().__init__()
+        
+        # Bullet dimensions
+        self.width = 12
+        self.height = 12
+        
+        # Create circular bullet
+        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, (255, 50, 50), (self.width // 2, self.height // 2), self.width // 2)
+        pygame.draw.circle(self.image, (200, 0, 0), (self.width // 2, self.height // 2), self.width // 2, 2)
+        
+        # Position and movement
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.velocity_x = velocity_x
+        self.velocity_y = velocity_y
+        
+        # Bullet properties
+        self.damage = 1
+        self.active = True
+    
+    def update(self, level_width, level_height):
+        """Update bullet position."""
+        self.rect.x += self.velocity_x
+        self.rect.y += self.velocity_y
+        
+        # Deactivate if out of bounds
+        if (self.rect.right < -100 or self.rect.left > level_width + 100 or
+            self.rect.bottom < -100 or self.rect.top > level_height + 100):
+            self.active = False
+    
+    def draw(self, screen, camera_x=0, camera_y=0):
+        """Draw the bullet to the screen with camera offset."""
+        if not self.active:
+            return
+        
+        screen_pos = (self.rect.x - camera_x, self.rect.y - camera_y)
+        screen.blit(self.image, screen_pos)
+    
+    def get_rect(self):
+        """Return the bullet's rectangle for collision detection."""
+        return self.rect
+    
+    def hit(self):
+        """Mark bullet as inactive after hitting something."""
+        self.active = False
+
+
+class BossEnemy(Enemy):
+    """Boss enemy with three special attacks: jump-shoot, jump-slam, and ultimate circular barrage."""
+    
+    def __init__(self, x, y):
+        super().__init__(x, y)
+        
+        # Boss is larger
+        self.width = 64
+        self.height = 64
+        
+        # Attack state
+        self.current_attack = None
+        self.attack_cooldown = 0
+        self.min_attack_cooldown = 120  # 2 seconds between attacks
+        self.attack_counter = 0  # Track number of attacks for ultimate timing
+        
+        # Jump-shoot attack
+        self.jump_shoot_state = None  # 'jumping', 'shooting', 'landing'
+        self.jump_shoot_bullets_fired = 0
+        self.jump_shoot_fire_timer = 0
+        
+        # Jump-slam attack
+        self.jump_slam_state = None  # 'jumping', 'slamming', 'recovering'
+        self.slam_bullets_created = False
+        self.slam_recovery_timer = 0
+        
+        # Ultimate attack
+        self.ultimate_state = None  # 'rising', 'shooting', 'descending'
+        self.ultimate_timer = 0
+        self.ultimate_shoot_timer = 0
+        self.ultimate_angle = 0
+        self.ultimate_position = None  # Where boss rises to
+        
+        # Boss bullets sprite group
+        self.bullets = pygame.sprite.Group()
+        
+    def setup_properties(self):
+        """Set up boss properties."""
+        self.speed = 0.8  # Slower movement
+        self.health = 30  # Much more health
+        self.max_health = 30
+        self.damage = 2
+        self.color = (150, 0, 150)  # Purple
+        self.jump_force = -15  # Higher jumps
+    
+    def choose_attack(self):
+        """Choose which attack to perform."""
+        self.attack_counter += 1
+        
+        # Every 4th attack is ultimate
+        if self.attack_counter % 4 == 0:
+            return 'ultimate'
+        else:
+            # Randomly choose between jump-shoot and jump-slam
+            return random.choice(['jump_shoot', 'jump_slam'])
+    
+    def update(self, solid_tiles, one_way_tiles, level_height, level_width, player_pos=None):
+        """Update boss with attack patterns."""
+        if not self.active:
+            return
+        
+        # Update cooldown
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+        
+        # Update bullets
+        for bullet in self.bullets:
+            bullet.update(level_width, level_height)
+            if not bullet.active:
+                self.bullets.remove(bullet)
+        
+        # If no current attack and cooldown is done, choose new attack
+        if self.current_attack is None and self.attack_cooldown == 0:
+            self.current_attack = self.choose_attack()
+            
+            if self.current_attack == 'jump_shoot':
+                self.jump_shoot_state = 'jumping'
+                self.velocity_y = self.jump_force
+                self.jump_shoot_bullets_fired = 0
+                self.jump_shoot_fire_timer = 0
+                
+            elif self.current_attack == 'jump_slam':
+                self.jump_slam_state = 'jumping'
+                self.velocity_y = self.jump_force * 0.8  # Slightly lower jump
+                self.slam_bullets_created = False
+                self.slam_recovery_timer = 0
+                
+            elif self.current_attack == 'ultimate':
+                self.ultimate_state = 'rising'
+                self.ultimate_timer = 0
+                self.ultimate_shoot_timer = 0
+                self.ultimate_angle = 0
+                # Store target position (high in the air)
+                self.ultimate_position = (self.rect.x, self.rect.y - 200)
+        
+        # Execute current attack
+        if self.current_attack == 'jump_shoot':
+            self.execute_jump_shoot(solid_tiles, one_way_tiles, level_height, level_width)
+        elif self.current_attack == 'jump_slam':
+            self.execute_jump_slam(solid_tiles, one_way_tiles, level_height, level_width)
+        elif self.current_attack == 'ultimate':
+            self.execute_ultimate(level_height, level_width)
+        else:
+            # Normal movement when not attacking
+            self.normal_movement(solid_tiles, one_way_tiles, level_height, level_width)
+    
+    def normal_movement(self, solid_tiles, one_way_tiles, level_height, level_width):
+        """Normal back-and-forth movement."""
+        self.velocity_x = self.direction * self.speed
+        
+        # Apply gravity
+        if not self.on_ground:
+            self.velocity_y += self.gravity
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+        
+        # Move horizontally
+        self.rect.x += self.velocity_x
+        
+        # Check boundaries and reverse
+        if self.rect.left <= 0:
+            self.rect.left = 0
+            self.direction *= -1
+        elif self.rect.right >= level_width:
+            self.rect.right = level_width
+            self.direction *= -1
+        
+        self.check_horizontal_collisions(solid_tiles)
+        
+        # Move vertically
+        self.rect.y += self.velocity_y
+        self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+    
+    def execute_jump_shoot(self, solid_tiles, one_way_tiles, level_height, level_width):
+        """Execute jump and shoot 3 bullets attack."""
+        if self.jump_shoot_state == 'jumping':
+            # Apply gravity while jumping
+            self.velocity_y += self.gravity
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+            
+            self.rect.y += self.velocity_y
+            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            
+            # When reaching apex or landing, start shooting
+            if self.velocity_y >= 0:  # Starting to fall or on ground
+                self.jump_shoot_state = 'shooting'
+        
+        elif self.jump_shoot_state == 'shooting':
+            # Apply gravity while shooting
+            self.velocity_y += self.gravity
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+            
+            self.rect.y += self.velocity_y
+            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            
+            # Fire bullets
+            self.jump_shoot_fire_timer += 1
+            if self.jump_shoot_fire_timer >= 15 and self.jump_shoot_bullets_fired < 3:  # Fire every 0.25 seconds
+                self.fire_bullet_spread()
+                self.jump_shoot_bullets_fired += 1
+                self.jump_shoot_fire_timer = 0
+            
+            # After firing all bullets and landing, end attack
+            if self.jump_shoot_bullets_fired >= 3 and self.on_ground:
+                self.current_attack = None
+                self.jump_shoot_state = None
+                self.attack_cooldown = self.min_attack_cooldown
+    
+    def fire_bullet_spread(self):
+        """Fire 3 bullets in a spread pattern."""
+        center_x = self.rect.centerx
+        center_y = self.rect.centery
+        
+        # Three directions: down-left, down, down-right
+        angles = [-45, 0, 45]  # Degrees from straight down
+        bullet_speed = 6
+        
+        for angle_deg in angles:
+            angle_rad = math.radians(angle_deg + 90)  # +90 because 0 degrees is right, we want down
+            vel_x = bullet_speed * math.cos(angle_rad)
+            vel_y = bullet_speed * math.sin(angle_rad)
+            
+            bullet = BossBullet(center_x, center_y, vel_x, vel_y)
+            self.bullets.add(bullet)
+    
+    def execute_jump_slam(self, solid_tiles, one_way_tiles, level_height, level_width):
+        """Execute jump and slam with horizontal projectiles."""
+        if self.jump_slam_state == 'jumping':
+            # Apply gravity
+            self.velocity_y += self.gravity * 1.5  # Fall faster for slam
+            if self.velocity_y > self.max_fall_speed * 1.5:
+                self.velocity_y = self.max_fall_speed * 1.5
+            
+            self.rect.y += self.velocity_y
+            self.check_vertical_collisions(solid_tiles, one_way_tiles, level_height)
+            
+            # When landing, create horizontal projectiles
+            if self.on_ground:
+                self.jump_slam_state = 'slamming'
+        
+        elif self.jump_slam_state == 'slamming':
+            if not self.slam_bullets_created:
+                self.create_slam_projectiles()
+                self.slam_bullets_created = True
+                self.slam_recovery_timer = 30  # 0.5 second recovery
+            
+            # Recovery period
+            if self.slam_recovery_timer > 0:
+                self.slam_recovery_timer -= 1
+            else:
+                self.current_attack = None
+                self.jump_slam_state = None
+                self.attack_cooldown = self.min_attack_cooldown
+    
+    def create_slam_projectiles(self):
+        """Create horizontal projectiles on both sides after slam."""
+        center_y = self.rect.centery
+        
+        # Create 3 bullets going left
+        for i in range(3):
+            bullet = BossBullet(self.rect.left, center_y + i * 8 - 8, -8, 0)
+            self.bullets.add(bullet)
+        
+        # Create 3 bullets going right
+        for i in range(3):
+            bullet = BossBullet(self.rect.right, center_y + i * 8 - 8, 8, 0)
+            self.bullets.add(bullet)
+    
+    def execute_ultimate(self, level_height, level_width):
+        """Execute ultimate attack: rise up and shoot bullets in circular pattern rapidly."""
+        if self.ultimate_state == 'rising':
+            # Move upward to ultimate position
+            target_x, target_y = self.ultimate_position
+            
+            # Move toward target
+            if self.rect.y > target_y:
+                self.rect.y -= 5
+            else:
+                self.ultimate_state = 'shooting'
+                self.ultimate_timer = 180  # Shoot for 3 seconds
+        
+        elif self.ultimate_state == 'shooting':
+            # Stay in place and shoot bullets in circle
+            self.velocity_y = 0
+            
+            self.ultimate_shoot_timer += 1
+            if self.ultimate_shoot_timer >= 5:  # Fire very rapidly
+                self.fire_circular_bullet()
+                self.ultimate_shoot_timer = 0
+                self.ultimate_angle += 30  # Rotate pattern
+            
+            self.ultimate_timer -= 1
+            if self.ultimate_timer <= 0:
+                self.ultimate_state = 'descending'
+        
+        elif self.ultimate_state == 'descending':
+            # Fall back down
+            self.velocity_y += self.gravity
+            if self.velocity_y > self.max_fall_speed:
+                self.velocity_y = self.max_fall_speed
+            
+            self.rect.y += self.velocity_y
+            
+            # When reaching ground level or below, end attack
+            if self.rect.bottom >= level_height - 50:  # Near ground
+                # Apply gravity and collision normally to land properly
+                if self.on_ground or self.rect.bottom >= level_height:
+                    self.velocity_y = 0
+                    self.current_attack = None
+                    self.ultimate_state = None
+                    self.attack_cooldown = self.min_attack_cooldown * 2  # Longer cooldown after ultimate
+    
+    def fire_circular_bullet(self):
+        """Fire a bullet in the current angle direction."""
+        center_x = self.rect.centerx
+        center_y = self.rect.centery
+        
+        bullet_speed = 5
+        angle_rad = math.radians(self.ultimate_angle)
+        
+        vel_x = bullet_speed * math.cos(angle_rad)
+        vel_y = bullet_speed * math.sin(angle_rad)
+        
+        bullet = BossBullet(center_x, center_y, vel_x, vel_y)
+        self.bullets.add(bullet)
+    
+    def get_bullets(self):
+        """Return the bullets sprite group for collision detection."""
+        return self.bullets
+    
+    def draw(self, screen, camera_x=0, camera_y=0):
+        """Draw the boss and its bullets."""
+        # Draw bullets first (behind boss)
+        for bullet in self.bullets:
+            bullet.draw(screen, camera_x, camera_y)
+        
+        # Draw boss (calls parent draw which includes eye)
+        super().draw(screen, camera_x, camera_y)
