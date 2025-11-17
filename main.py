@@ -147,7 +147,7 @@ class Game:
                 elif event.key == pygame.K_RETURN and self.state == "level_complete":
                     # Continue to level select after completing level
                     self.state = "level_select"
-                elif event.key == pygame.K_x and self.state == "playing" and not self.game_over:
+                elif event.key == pygame.K_f and self.state == "playing" and not self.game_over:
                     # Shoot bullet
                     bullet_info = self.player.shoot()
                     if bullet_info:

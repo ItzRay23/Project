@@ -35,6 +35,7 @@ class Player(pygame.sprite.Sprite):
         self.velocity_x = 0
         self.velocity_y = 0
         self.on_ground = False
+        self.was_on_ground = False  # Track previous ground state
         self.can_jump = True
         
         # Double jump mechanic
@@ -81,6 +82,9 @@ class Player(pygame.sprite.Sprite):
         level_width/level_height: pixel bounds of the level for camera/clamp
         """
         current_time = pygame.time.get_ticks()
+        
+        # Track previous ground state
+        self.was_on_ground = self.on_ground
         
         # Handle invulnerability timer
         if self.invulnerable:
@@ -137,29 +141,6 @@ class Player(pygame.sprite.Sprite):
                 self.velocity_x = self.speed
                 self.facing_direction = 1
         
-        # Handle jumping (ground jump and double jump)
-        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
-        
-        if jump_pressed and not self.jump_key_was_pressed:
-            # Jump key just pressed (edge detection)
-            if self.on_ground and self.can_jump:
-                # Ground jump
-                self.velocity_y = self.jump_speed
-                self.on_ground = False
-                self.can_jump = False
-                self.jump_start_time = current_time
-                self.has_landed_since_jump = False
-                # Enable double jump immediately after ground jump
-                self.has_double_jump = True
-            elif not self.on_ground and self.has_double_jump:
-                # Double jump (air jump) - within grace period after first jump
-                time_since_jump = current_time - self.jump_start_time
-                if time_since_jump <= self.double_jump_grace_period:
-                    self.velocity_y = self.jump_speed
-                    self.has_double_jump = False
-        
-        self.jump_key_was_pressed = jump_pressed
-        
         # Apply gravity
         if not self.on_ground:
             self.velocity_y += self.gravity
@@ -178,6 +159,28 @@ class Player(pygame.sprite.Sprite):
         # Keep player within level bounds horizontally and vertically
         self.rect.x = max(0, min(self.rect.x, level_width - self.width))
         self.rect.y = max(0, min(self.rect.y, level_height - self.height))
+        
+        # Handle jumping AFTER all collision and position updates are complete
+        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+        
+        if jump_pressed and not self.jump_key_was_pressed:
+            # Jump key just pressed (edge detection)
+            if self.on_ground:
+                # Ground jump - always works when on ground
+                self.velocity_y = self.jump_speed
+                self.can_jump = False
+                self.jump_start_time = current_time
+                self.has_landed_since_jump = False
+                # Enable double jump immediately after ground jump
+                self.has_double_jump = True
+            elif self.has_double_jump:
+                # Double jump (air jump) - within grace period after first jump
+                time_since_jump = current_time - self.jump_start_time
+                if time_since_jump <= self.double_jump_grace_period:
+                    self.velocity_y = self.jump_speed
+                    self.has_double_jump = False
+        
+        self.jump_key_was_pressed = jump_pressed
     
     def check_horizontal_collisions(self, tiles):
         """Check for horizontal collisions with solid tiles only (platforms have no horizontal collision)."""
@@ -194,6 +197,7 @@ class Player(pygame.sprite.Sprite):
         - Solid tiles (ground) always block both up and down.
         - One-way tiles only block when falling (velocity_y > 0) and the player's previous bottom was <= tile.top
         """
+        was_grounded = self.on_ground
         self.on_ground = False
 
         # First check collisions with solid tiles
@@ -225,13 +229,34 @@ class Player(pygame.sprite.Sprite):
             self.on_ground = True
             self.can_jump = True
         
+        # Additional check: if velocity is 0 and we were grounded last frame, stay grounded
+        # This prevents flickering when standing still
+        if self.velocity_y == 0 and was_grounded and not self.on_ground:
+            # Do a quick check if there's ground below us (within 1 pixel)
+            test_rect = self.rect.copy()
+            test_rect.y += 1
+            
+            for tile in solid_tiles:
+                if test_rect.colliderect(tile):
+                    self.on_ground = True
+                    self.can_jump = True
+                    break
+            
+            if not self.on_ground:
+                for tile in one_way_tiles:
+                    if test_rect.colliderect(tile):
+                        self.on_ground = True
+                        self.can_jump = True
+                        break
+        
         # Update last grounded time when touching ground
         if self.on_ground:
             self.last_grounded_time = pygame.time.get_ticks()
-            # Mark that player has landed (but don't give double jump yet - only on jump)
-            if not self.has_landed_since_jump:
+            
+            # Only process landing logic when transitioning from air to ground
+            if not self.was_on_ground:
+                # Just landed - mark as landed but don't change double jump state
                 self.has_landed_since_jump = True
-                self.has_double_jump = False  # Reset double jump, will be enabled on next jump
     
     def draw(self, screen, camera_x=0, camera_y=0, total_crystals=0, collected_crystals=0):
         """Draw the player to the screen with camera offset."""
@@ -245,6 +270,9 @@ class Player(pygame.sprite.Sprite):
             self.image.fill((255, 255, 0))  # Yellow during dash
         else:
             self.image.fill((0, 128, 255))  # Normal blue color
+        
+        # Draw eye on player
+        self.draw_eye_on_sprite()
         
         # Draw player with camera offset
         screen_pos = (self.rect.x - camera_x, self.rect.y - camera_y)
@@ -288,6 +316,37 @@ class Player(pygame.sprite.Sprite):
                     (x, y + 10), (x + 8, y + 18), (x + 16, y + 10),
                     (x + 16, y + 6), (x + 12, y + 2)
                 ], 2)
+    
+    def draw_eye_on_sprite(self):
+        """Draw a simple white square eye on the player sprite"""
+        # Position eye near the head area
+        eye_size = 6  # Small square
+        eye_x = self.width // 2 - eye_size // 2  # Center horizontally
+        eye_y = 8  # Near the top (head area)
+        
+        # Offset eye based on movement direction
+        offset = 6  # Pixels to offset
+        
+        # Horizontal offset
+        if self.velocity_x > 0:  # Moving right
+            eye_x += offset
+        elif self.velocity_x < 0:  # Moving left
+            eye_x -= offset
+        else:
+            # Use facing direction when not moving
+            if self.facing_direction > 0:
+                eye_x += offset
+            else:
+                eye_x -= offset
+        
+        # Vertical offset
+        if self.velocity_y < 0:  # Moving up (jumping)
+            eye_y -= offset
+        elif self.velocity_y > 0:  # Moving down (falling)
+            eye_y += offset
+        
+        # Draw white square eye directly on the sprite
+        pygame.draw.rect(self.image, (255, 255, 255), (eye_x, eye_y, eye_size, eye_size))
     
     def draw_crystals(self, screen, total_crystals, collected_crystals):
         """Draw crystal collection status (similar to hearts)."""
@@ -395,8 +454,9 @@ class Player(pygame.sprite.Sprite):
         pygame.draw.rect(screen, (50, 50, 50), 
                         (indicator_x, indicator_y, indicator_width, indicator_height))
         
-        if self.has_double_jump:
-            # Double jump available - draw full blue bar with pulsing effect
+        # Determine state for display only (doesn't modify player state)
+        if self.has_double_jump and not self.on_ground:
+            # Double jump available in air - draw full blue bar with pulsing effect
             pulse = abs((pygame.time.get_ticks() % 1000) - 500) / 500.0  # 0 to 1 pulse
             brightness = int(150 + 105 * pulse)  # Pulse between 150 and 255
             color = (0, brightness, brightness)  # Cyan color
@@ -408,41 +468,26 @@ class Player(pygame.sprite.Sprite):
             text = font.render("JUMP", True, (255, 255, 255))
             text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
             screen.blit(text, text_rect)
-        else:
-            # Double jump not available
-            current_time = pygame.time.get_ticks()
-            time_since_jump = current_time - self.jump_start_time
+        elif self.on_ground:
+            # On ground - show ready state
+            pygame.draw.rect(screen, (0, 100, 100), 
+                           (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
             
-            if time_since_jump < self.double_jump_grace_period and not self.on_ground:
-                # Within grace period but already used - show depleted
-                pygame.draw.rect(screen, (80, 80, 80), 
-                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
-                
-                # Draw "USED" text
-                font = pygame.font.Font(None, 18)
-                text = font.render("USED", True, (150, 150, 150))
-                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
-                screen.blit(text, text_rect)
-            elif self.on_ground:
-                # On ground - show recharging
-                pygame.draw.rect(screen, (0, 100, 100), 
-                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
-                
-                # Draw "READY" text
-                font = pygame.font.Font(None, 18)
-                text = font.render("READY", True, (200, 200, 200))
-                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
-                screen.blit(text, text_rect)
-            else:
-                # Grace period expired - show unavailable
-                pygame.draw.rect(screen, (100, 0, 0), 
-                               (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
-                
-                # Draw "---" text
-                font = pygame.font.Font(None, 18)
-                text = font.render("---", True, (150, 150, 150))
-                text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
-                screen.blit(text, text_rect)
+            # Draw "READY" text
+            font = pygame.font.Font(None, 18)
+            text = font.render("READY", True, (200, 200, 200))
+            text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+            screen.blit(text, text_rect)
+        else:
+            # In air without double jump - show unavailable
+            pygame.draw.rect(screen, (80, 80, 80), 
+                           (indicator_x + 2, indicator_y + 2, indicator_width - 4, indicator_height - 4))
+            
+            # Draw "USED" text
+            font = pygame.font.Font(None, 18)
+            text = font.render("USED", True, (150, 150, 150))
+            text_rect = text.get_rect(center=(indicator_x + indicator_width // 2, indicator_y + indicator_height // 2))
+            screen.blit(text, text_rect)
         
         # Draw border
         pygame.draw.rect(screen, (200, 200, 200), 
