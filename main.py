@@ -84,10 +84,17 @@ class Game:
         self.current_level_index = level_index
         self.level = Level(level_file, tile_size=64)
         
-        # Start player near the left side, 20 pixels above the highest ground
-        start_x = 100
-        highest_ground_y = self.level.get_highest_ground_y(start_x)
-        start_y = highest_ground_y - 20  # Spawn 20 pixels above the ground
+        # Check if level has a custom player spawn point (X in CSV)
+        player_spawn = self.level.get_player_spawn_position()
+        if player_spawn:
+            # Use custom spawn point from level
+            start_x, start_y = player_spawn
+        else:
+            # Fall back to calculated spawn (near left side, above ground)
+            start_x = 100
+            highest_ground_y = self.level.get_highest_ground_y(start_x)
+            start_y = highest_ground_y - 20  # Spawn 20 pixels above the ground
+        
         self.player = Player(start_x, start_y)
         
         # Clear and spawn enemies

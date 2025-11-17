@@ -42,6 +42,7 @@ class Level:
         self.one_way_tiles = []  # list of pygame.Rect for P (platform)
         self.collectibles = []  # list of dicts: {'rect': Rect, 'collected': False}
         self.enemy_spawns = []  # list of dicts: {'x': x, 'y': y, 'type': enemy_type}
+        self.player_spawn_point = None  # tuple (x, y) for X (player spawn)
         self.exit_rect = None  # pygame.Rect for E (exit door)
         
         # Boss defeat tracking
@@ -73,6 +74,7 @@ class Level:
         self.one_way_tiles = []
         self.collectibles = []
         self.enemy_spawns = []
+        self.player_spawn_point = None
         self.exit_rect = None
 
         # Allow relative path
@@ -162,6 +164,11 @@ class Level:
                     spawn_x = x + self.tile_size // 2
                     spawn_y = y + self.tile_size // 2
                     self.enemy_spawns.append({'x': spawn_x, 'y': spawn_y, 'type': 'boss'})
+                elif code == 'X':
+                    # Player spawn point
+                    spawn_x = x + self.tile_size // 2
+                    spawn_y = y + self.tile_size // 2
+                    self.player_spawn_point = (spawn_x, spawn_y)
                 elif code == 'E':
                     # Exit door - full tile size
                     self.exit_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
@@ -398,6 +405,10 @@ class Level:
     def get_enemy_spawn_positions(self):
         """Return enemy spawn positions from CSV markers."""
         return self.enemy_spawns.copy()  # Return a copy to prevent external modification
+    
+    def get_player_spawn_position(self):
+        """Return player spawn position if defined in level, otherwise None."""
+        return self.player_spawn_point
     
     def is_exit_unlocked(self):
         """Check if all collectibles are collected to unlock the exit."""
