@@ -195,6 +195,57 @@ class LevelSelect:
             color=(100, 100, 100),
             hover_color=(150, 150, 150)
         )
+        
+        # Reset progress button
+        self.reset_button = Button(
+            screen_width - 250,
+            screen_height - 100,
+            200,
+            60,
+            "RESET",
+            self.button_font,
+            color=(150, 50, 50),
+            hover_color=(200, 80, 80)
+        )
+        
+        # Confirmation dialog state
+        self.show_confirmation = False
+        self.confirm_yes_button = None
+        self.confirm_no_button = None
+        self.create_confirmation_buttons()
+    
+    def create_confirmation_buttons(self):
+        """Create confirmation dialog buttons."""
+        dialog_width = 400
+        dialog_height = 200
+        dialog_x = (self.screen_width - dialog_width) // 2
+        dialog_y = (self.screen_height - dialog_height) // 2
+        
+        button_width = 150
+        button_height = 50
+        button_y = dialog_y + dialog_height - 70
+        
+        self.confirm_yes_button = Button(
+            dialog_x + 50,
+            button_y,
+            button_width,
+            button_height,
+            "YES",
+            self.button_font,
+            color=(150, 50, 50),
+            hover_color=(200, 80, 80)
+        )
+        
+        self.confirm_no_button = Button(
+            dialog_x + dialog_width - button_width - 50,
+            button_y,
+            button_width,
+            button_height,
+            "NO",
+            self.button_font,
+            color=(50, 150, 50),
+            hover_color=(80, 200, 80)
+        )
     
     def load_progress(self):
         """Load level progress from file."""
@@ -235,10 +286,47 @@ class LevelSelect:
         except Exception as e:
             print(f"Could not save progress: {e}")
     
+    def reset_progress(self):
+        """Reset all progress - lock all levels except level 1."""
+        try:
+            # Reset progress file
+            data = {"completed_levels": []}
+            with open("progress.json", "w") as f:
+                json.dump(data, f)
+            
+            # Lock all levels except the first one
+            for i, level in enumerate(self.levels):
+                if i == 0:
+                    level["unlocked"] = True
+                else:
+                    level["unlocked"] = False
+            
+            # Update button colors
+            for i, button in enumerate(self.level_buttons):
+                if self.levels[i]["unlocked"]:
+                    button.color = (50, 100, 150)
+                    button.hover_color = (80, 130, 200)
+                else:
+                    button.color = (70, 70, 70)
+                    button.hover_color = (90, 90, 90)
+            
+            print("Progress reset successfully")
+        except Exception as e:
+            print(f"Could not reset progress: {e}")
+    
     def handle_events(self, event):
         """Handle level select events. Returns ('play', level_file) or action string."""
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
+            
+            # If confirmation dialog is showing, only handle those buttons
+            if self.show_confirmation:
+                if self.confirm_yes_button.is_clicked(mouse_pos, True):
+                    self.reset_progress()
+                    self.show_confirmation = False
+                elif self.confirm_no_button.is_clicked(mouse_pos, True):
+                    self.show_confirmation = False
+                return None
             
             # Check level buttons
             for i, button in enumerate(self.level_buttons):
@@ -248,6 +336,10 @@ class LevelSelect:
             # Check back button
             if self.back_button.is_clicked(mouse_pos, True):
                 return "main_menu"
+            
+            # Check reset button
+            if self.reset_button.is_clicked(mouse_pos, True):
+                self.show_confirmation = True
         
         return None
     
@@ -255,10 +347,17 @@ class LevelSelect:
         """Update level select state."""
         mouse_pos = pygame.mouse.get_pos()
         
-        for button in self.level_buttons:
-            button.update(mouse_pos)
-        
-        self.back_button.update(mouse_pos)
+        if self.show_confirmation:
+            # Only update confirmation buttons when dialog is showing
+            self.confirm_yes_button.update(mouse_pos)
+            self.confirm_no_button.update(mouse_pos)
+        else:
+            # Update normal buttons
+            for button in self.level_buttons:
+                button.update(mouse_pos)
+            
+            self.back_button.update(mouse_pos)
+            self.reset_button.update(mouse_pos)
     
     def draw(self, screen):
         """Draw the level select screen."""
@@ -283,7 +382,45 @@ class LevelSelect:
         # Draw back button
         self.back_button.draw(screen)
         
+        # Draw reset button
+        self.reset_button.draw(screen)
+        
         # Instructions
         info_text = self.info_font.render("Complete levels to unlock the next!", True, (200, 200, 200))
         info_rect = info_text.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
         screen.blit(info_text, info_rect)
+        
+        # Draw confirmation dialog if showing
+        if self.show_confirmation:
+            self.draw_confirmation_dialog(screen)
+    
+    def draw_confirmation_dialog(self, screen):
+        """Draw the reset confirmation dialog."""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+        
+        # Dialog box
+        dialog_width = 400
+        dialog_height = 200
+        dialog_x = (self.screen_width - dialog_width) // 2
+        dialog_y = (self.screen_height - dialog_height) // 2
+        
+        pygame.draw.rect(screen, (40, 40, 60), (dialog_x, dialog_y, dialog_width, dialog_height))
+        pygame.draw.rect(screen, (255, 255, 255), (dialog_x, dialog_y, dialog_width, dialog_height), 3)
+        
+        # Warning text
+        warning_text = self.button_font.render("Reset Progress?", True, (255, 200, 0))
+        warning_rect = warning_text.get_rect(center=(self.screen_width // 2, dialog_y + 50))
+        screen.blit(warning_text, warning_rect)
+        
+        # Confirmation text
+        confirm_text = self.info_font.render("All progress will be lost!", True, (255, 255, 255))
+        confirm_rect = confirm_text.get_rect(center=(self.screen_width // 2, dialog_y + 90))
+        screen.blit(confirm_text, confirm_rect)
+        
+        # Draw buttons
+        self.confirm_yes_button.draw(screen)
+        self.confirm_no_button.draw(screen)
