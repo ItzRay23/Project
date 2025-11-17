@@ -246,16 +246,16 @@ class Game:
             if self.game_over:
                 self.draw_game_over()
             else:
-                # Draw collectibles HUD
+                # Draw level name (top left, below hearts)
+                level_name = f"Level {self.current_level_index + 1}"
+                level_text = self.font.render(level_name, True, (255, 255, 255))
+                self.screen.blit(level_text, (10, 45))
+                
+                # Draw collectibles HUD (below level name)
                 total = len(self.level.collectibles)
                 collected = sum(1 for it in self.level.collectibles if it['collected'])
                 hud_text = self.font.render(f"Collected: {collected}/{total}", True, (255, 255, 255))
-                self.screen.blit(hud_text, (10, 40))
-                
-                # Draw level name
-                level_name = f"Level {self.current_level_index + 1}"
-                level_text = self.font.render(level_name, True, (255, 255, 255))
-                self.screen.blit(level_text, (10, 10))
+                self.screen.blit(hud_text, (10, 85))
         
         elif self.state == "level_complete":
             self.draw_level_complete()
