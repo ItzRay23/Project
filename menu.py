@@ -441,8 +441,8 @@ class LevelSelect:
             
             # Draw lock icon for locked levels
             if not self.levels[i]["unlocked"]:
-                lock_text = self.info_font.render("🔒 LOCKED", True, (200, 200, 0))
-                lock_rect = lock_text.get_rect(center=(button.rect.centerx, button.rect.centery + 40))
+                lock_text = self.info_font.render("LOCKED", True, (200, 200, 0))
+                lock_rect = lock_text.get_rect(center=(button.rect.centerx, button.rect.centery + 47))
                 screen.blit(lock_text, lock_rect)
         
         # Draw back button
