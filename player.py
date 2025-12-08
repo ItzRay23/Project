@@ -271,8 +271,14 @@ class Player(pygame.sprite.Sprite):
         else:
             self.image.fill((0, 128, 255))  # Normal blue color
         
+        # Draw bandana strip on player sprite
+        self.draw_bandana_strip_on_sprite()
+        
         # Draw eye on player
         self.draw_eye_on_sprite()
+        
+        # Draw bandana tie on screen (behind player)
+        self.draw_bandana_tie(screen, camera_x, camera_y)
         
         # Draw player with camera offset
         screen_pos = (self.rect.x - camera_x, self.rect.y - camera_y)
@@ -346,7 +352,75 @@ class Player(pygame.sprite.Sprite):
             eye_y += offset
         
         # Draw white square eye directly on the sprite
-        pygame.draw.rect(self.image, (255, 255, 255), (eye_x, eye_y, eye_size, eye_size))
+        pygame.draw.rect(self.image, (0, 0, 0), (eye_x, eye_y, eye_size, eye_size))
+    
+    def draw_bandana_strip_on_sprite(self):
+        """Draw the bandana strip on the player sprite"""
+        bandana_color = (220, 20, 60)  # Crimson red
+        dark_bandana = (180, 10, 40)  # Darker red for outline/detail
+        
+        # Neck strip position (behind the head area)
+        neck_y = 14  # Base position below the eye
+        strip_height = 4  # Thin strip
+        
+        # Offset for vertical movement (follow eye movement)
+        vertical_offset = 0
+        if self.velocity_y < 0:  # Moving up (jumping)
+            vertical_offset = -6
+        elif self.velocity_y > 0:  # Moving down (falling)
+            vertical_offset = 6
+        
+        neck_y += vertical_offset
+        
+        # Draw the neck strip across the full width of the player
+        pygame.draw.rect(self.image, bandana_color, 
+                        (0, neck_y + 3, self.width, strip_height))
+        # Add darker outline for definition
+        pygame.draw.rect(self.image, dark_bandana, 
+                        (0, neck_y + 3, self.width, strip_height), 1)
+    
+    def draw_bandana_tie(self, screen, camera_x, camera_y):
+        """Draw the bandana tie on the screen (behind player)"""
+        bandana_color = (220, 20, 60)  # Crimson red
+        dark_bandana = (180, 10, 40)  # Darker red for outline/detail
+        
+        # Fixed neck position (no vertical offset for tie)
+        neck_y = 14
+        vertical_offset = 0
+        if self.velocity_y < 0:  # Moving up (jumping)
+            vertical_offset = -6
+        elif self.velocity_y > 0:  # Moving down (falling)
+            vertical_offset = 6
+        neck_y += vertical_offset
+
+        # Bandana tie at the back of the head - follows movement
+        tie_width = 8
+        tie_height = 12
+        
+        # Calculate screen position
+        screen_x = self.rect.x - camera_x
+        screen_y = self.rect.y - camera_y
+        
+        # Position tie based on facing direction (behind the player)
+        if self.velocity_x < 0 or (self.velocity_x == 0 and self.facing_direction < 0):
+            # Facing left, tie on right side (behind)
+            tie_x = screen_x + self.width
+        else:
+            # Facing right, tie on left side (behind)
+            tie_x = screen_x - tie_width
+        
+        tie_y = screen_y + neck_y + 2  # Fixed Y position aligned with the neck strip
+        
+        # Draw the tie as a small diamond/ribbon
+        tie_points = [
+            (tie_x + tie_width // 2, tie_y),  # Top center
+            (tie_x, tie_y + tie_height // 2),  # Left middle
+            (tie_x + tie_width // 2, tie_y + tie_height),  # Bottom center
+            (tie_x + tie_width, tie_y + tie_height // 2)  # Right middle
+        ]
+        pygame.draw.polygon(screen, bandana_color, tie_points)
+        # Add outline
+        pygame.draw.polygon(screen, dark_bandana, tie_points, 1)
     
     def draw_crystals(self, screen, total_crystals, collected_crystals):
         """Draw crystal collection status (similar to hearts)."""

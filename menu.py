@@ -53,7 +53,7 @@ class MainMenu:
         # Load title image
         self.title_image = None
         try:
-            self.title_image = pygame.image.load("assets/title.png")
+            self.title_image = pygame.image.load("assets/title.png").convert_alpha()
             # Scale title image if needed
             title_width = int(self.screen_width * 0.8)
             title_height = int(self.title_image.get_height() * (title_width / self.title_image.get_width()))

@@ -34,6 +34,10 @@ class Game:
         self.state = "main_menu"  # States: main_menu, level_select, playing, level_complete
         self.game_over = False
         
+        # Controls tutorial state
+        self.show_controls = False
+        self.controls_acknowledged = False
+        
         # Current level info
         self.current_level_index = 0
         self.current_level_file = None
@@ -55,6 +59,7 @@ class Game:
         # Font for UI
         self.font = pygame.font.Font(None, 36)
         self.large_font = pygame.font.Font(None, 64)
+        self.control_font = pygame.font.Font(None, 24)
     
     def spawn_enemies(self):
         """Spawn enemies based on CSV spawn markers."""
@@ -107,6 +112,14 @@ class Game:
         # Reset camera
         self.camera_x = 0
         self.camera_y = 0
+        
+        # Show controls for level 1
+        if level_index == 0:
+            self.show_controls = True
+            self.controls_acknowledged = False
+        else:
+            self.show_controls = False
+            self.controls_acknowledged = True
         
         # Reset game state
         self.game_over = False
@@ -178,6 +191,16 @@ class Game:
                 elif result and result[0] == "play":
                     _, level_index, level_file = result
                     self.load_level(level_file, level_index)
+            
+            # Handle controls panel OK button
+            elif self.state == "playing" and self.show_controls and not self.controls_acknowledged:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_pos = pygame.mouse.get_pos()
+                    # OK button rect (defined in draw_controls)
+                    ok_button_rect = pygame.Rect(self.SCREEN_WIDTH // 2 - 50, 405, 100, 40)
+                    if ok_button_rect.collidepoint(mouse_pos):
+                        self.controls_acknowledged = True
+                        self.show_controls = False
     
     def update(self):
         """Update all game objects."""
@@ -189,6 +212,10 @@ class Game:
         
         elif self.state == "playing":
             if self.game_over:
+                return
+            
+            # Don't update game if controls are showing
+            if self.show_controls and not self.controls_acknowledged:
                 return
             
             # Get pressed keys for continuous input
@@ -318,7 +345,9 @@ class Game:
                 level_text = self.font.render(level_name, True, (255, 255, 255))
                 self.screen.blit(level_text, (10, 45))
                 
-                # Crystal UI is now drawn by player.draw() method
+                # Draw controls in level 1 if not acknowledged
+                if self.show_controls and not self.controls_acknowledged:
+                    self.draw_controls()
         
         elif self.state == "level_complete":
             self.draw_level_complete()
@@ -348,6 +377,58 @@ class Game:
         menu_text = self.font.render("Press ESC for Level Select", True, (200, 200, 200))
         menu_rect = menu_text.get_rect(center=(self.SCREEN_WIDTH//2, self.SCREEN_HEIGHT//2 + 100))
         self.screen.blit(menu_text, menu_rect)
+    
+    def draw_controls(self):
+        """Draw control instructions for level 1."""
+        # Create semi-transparent background for better readability
+        controls_bg = pygame.Surface((400, 310))
+        controls_bg.set_alpha(180)
+        controls_bg.fill((255, 255, 255))
+        self.screen.blit(controls_bg, (self.SCREEN_WIDTH // 2 - 200, 150))
+        
+        # Controls text
+        controls = [
+            "CONTROLS",
+            "",
+            "Arrow Keys/WASD - Move Left/Right",
+            "Space Bar - Jump",
+            "Double-tap Arrow/AD - Dash",
+            "F - Shoot",
+            "",
+            "Collect all crystals to unlock the exit!"
+        ]
+        
+        y_offset = 160
+        for i, line in enumerate(controls):
+            if i == 0:  # Title
+                text = self.font.render(line, True, (0, 0, 0))
+            elif line == "":  # Empty line
+                y_offset += 10
+                continue
+            else:
+                text = self.control_font.render(line, True, (0, 0, 0))
+            
+            text_rect = text.get_rect(center=(self.SCREEN_WIDTH // 2, y_offset))
+            self.screen.blit(text, text_rect)
+            y_offset += 30
+        
+        # Draw OK button
+        ok_button_rect = pygame.Rect(self.SCREEN_WIDTH // 2 - 50, 405, 100, 40)
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # Button color changes on hover
+        if ok_button_rect.collidepoint(mouse_pos):
+            button_color = (80, 200, 80)  # Lighter green on hover
+        else:
+            button_color = (50, 150, 50)  # Normal green
+        
+        pygame.draw.rect(self.screen, button_color, ok_button_rect)
+        pygame.draw.rect(self.screen, (0, 0, 0), ok_button_rect, 3)  # Black border
+        
+        # OK text
+        ok_text = self.font.render("OK", True, (255, 255, 255))
+        ok_text_rect = ok_text.get_rect(center=ok_button_rect.center)
+        self.screen.blit(ok_text, ok_text_rect)
     
     def draw_level_complete(self):
         """Draw level complete screen."""

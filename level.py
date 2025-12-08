@@ -32,6 +32,17 @@ class Level:
         self.tile_size = tile_size
         self.background_color = (135, 206, 235)  # Sky blue
 
+        # Load crystal sprite
+        base = os.path.dirname(os.path.abspath(__file__))
+        crystal_path = os.path.join(base, "assets", "crystal_still.png")
+        try:
+            self.crystal_sprite = pygame.image.load(crystal_path).convert_alpha()
+            # Scale to 64x128 pixels
+            self.crystal_sprite = pygame.transform.scale(self.crystal_sprite, (64, 128))
+        except (pygame.error, FileNotFoundError):
+            print(f"Warning: Could not load crystal sprite from {crystal_path}")
+            self.crystal_sprite = None
+
         # Storage for tiles
         self.tiles = []  # 2D list of tile codes
         self.solid_tiles = []  # list of pygame.Rect for G and D (ground and dirt)
@@ -364,30 +375,37 @@ class Level:
             if item['collected']:
                 continue
             rect = item['rect']
-            # Draw rhombus crystal
-            center_x = rect.centerx - camera_x
-            center_y = rect.centery - camera_y
-            half_w = rect.width // 2
-            half_h = rect.height // 2
             
-            # Rhombus points: top, right, bottom, left
-            crystal_points = [
-                (center_x, center_y - half_h),  # top
-                (center_x + half_w, center_y),   # right
-                (center_x, center_y + half_h),   # bottom
-                (center_x - half_w, center_y)    # left
-            ]
-            # Draw filled crystal (cyan/light blue)
-            pygame.draw.polygon(screen, (0, 255, 255), crystal_points)
-            # Draw crystal outline (darker blue)
-            pygame.draw.polygon(screen, (0, 150, 200), crystal_points, 2)
-            # Add shine effect
-            shine_points = [
-                (center_x - half_w // 3, center_y - half_h // 3),
-                (center_x, center_y - half_h // 2),
-                (center_x - half_w // 4, center_y)
-            ]
-            pygame.draw.polygon(screen, (200, 255, 255), shine_points)
+            # Draw crystal sprite if available
+            if self.crystal_sprite:
+                screen_x = rect.x - camera_x
+                screen_y = rect.y - camera_y
+                screen.blit(self.crystal_sprite, (screen_x, screen_y))
+            else:
+                # Fallback: Draw rhombus crystal
+                center_x = rect.centerx - camera_x
+                center_y = rect.centery - camera_y
+                half_w = rect.width // 2
+                half_h = rect.height // 2
+                
+                # Rhombus points: top, right, bottom, left
+                crystal_points = [
+                    (center_x, center_y - half_h),  # top
+                    (center_x + half_w, center_y),   # right
+                    (center_x, center_y + half_h),   # bottom
+                    (center_x - half_w, center_y)    # left
+                ]
+                # Draw filled crystal (cyan/light blue)
+                pygame.draw.polygon(screen, (0, 255, 255), crystal_points)
+                # Draw crystal outline (darker blue)
+                pygame.draw.polygon(screen, (0, 150, 200), crystal_points, 2)
+                # Add shine effect
+                shine_points = [
+                    (center_x - half_w // 3, center_y - half_h // 3),
+                    (center_x, center_y - half_h // 2),
+                    (center_x - half_w // 4, center_y)
+                ]
+                pygame.draw.polygon(screen, (200, 255, 255), shine_points)
         
         # Draw enemy spawn points (for debugging/development)
         # Uncomment this section if you want to see spawn markers visually

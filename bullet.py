@@ -17,8 +17,8 @@ class Bullet(pygame.sprite.Sprite):
         super().__init__()
         
         # Bullet dimensions
-        self.width = 16
-        self.height = 12
+        self.width = 20
+        self.height = 16
         
         # Create bullet surface (teardrop rotated 90 degrees counterclockwise)
         self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)

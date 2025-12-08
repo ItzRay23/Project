@@ -92,7 +92,7 @@ class Enemy(pygame.sprite.Sprite):
             eye_y += offset
         
         # Draw white square eye directly on the sprite
-        pygame.draw.rect(self.image, (255, 255, 255), (eye_x, eye_y, eye_size, eye_size))
+        pygame.draw.rect(self.image, (0, 0, 0), (eye_x, eye_y, eye_size, eye_size))
     
     def get_movement_behavior(self):
         """Get movement behavior for this enemy type. Override in subclasses."""
