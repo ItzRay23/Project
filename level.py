@@ -69,6 +69,10 @@ class Level:
         # Decorations (clouds/grass) are optional
         self.decorations = []
         self.generate_decorations()
+        
+        # Background trees with parallax
+        self.trees = []
+        self.generate_trees()
     
     def load_from_csv(self, csv_path):
         """Load the tile grid from a CSV file.
@@ -201,6 +205,90 @@ class Level:
                 decoration = {'pos': (rect.x + 8, rect.y - 8), 'size': 6, 'color': (34, 139, 34), 'type': 'grass'}
                 self.decorations.append(decoration)
     
+    def generate_trees(self):
+        """Generate background trees with parallax effect."""
+        self.trees = []
+        # Place trees across the level width
+        tree_spacing = 300  # Space between trees
+        num_trees = (self.width // tree_spacing) + 2  # Ensure coverage
+        
+        for i in range(num_trees):
+            x = i * tree_spacing + random.randint(-50, 50)  # Add some randomness
+            # Find ground level at this position
+            ground_y = self.height - 100  # Default
+            for rect in self.solid_tiles:
+                if abs(rect.centerx - x) < 100:
+                    ground_y = rect.top
+                    break
+            
+            tree = {
+                'x': x,
+                'y': ground_y,
+                'height': random.randint(120, 180),
+                'trunk_width': random.randint(20, 30),
+                'canopy_radius': random.randint(40, 60)
+            }
+            self.trees.append(tree)
+    
+    def draw_background_ground(self, screen, camera_x, camera_y, parallax_factor):
+        """Draw background ground with parallax effect extending to bottom of level."""
+        # Darker colors for background
+        bg_brown = (90, 45, 12)  # Darker brown
+        bg_grass = (20, 90, 20)  # Darker grass green
+        
+        # Calculate parallax offset (locked to tree parallax)
+        parallax_x = camera_x * parallax_factor
+        
+        # Lift background ground to show distance
+        vertical_offset = - 20  # Lift by 80 pixels to show it's in the distance
+        
+        # Draw ground tiles with parallax in the background
+        tile_width = 64
+        tile_height = 64
+        
+        for rect in self.ground_tiles:
+            # Apply parallax to x position only
+            bg_x = rect.x - parallax_x
+            bg_y = rect.y - camera_y + vertical_offset
+            
+            # Only draw if within screen bounds (with buffer)
+            if -tile_width < bg_x < screen.get_width() + tile_width:
+                # Calculate height from this tile to bottom of level
+                height_to_bottom = self.height - rect.y - vertical_offset
+                
+                screen_rect = pygame.Rect(bg_x, bg_y, rect.width, height_to_bottom)
+                # Draw darker brown ground extending to bottom
+                pygame.draw.rect(screen, bg_brown, screen_rect)
+                # Draw darker grass on top edge only
+                grass_rect = pygame.Rect(bg_x, bg_y, rect.width, 4)
+                pygame.draw.rect(screen, bg_grass, grass_rect)
+    
+    def draw_tree(self, screen, screen_x, screen_y, tree):
+        """Draw a single tree at the given position."""
+        trunk_color = (101, 67, 33)  # Brown
+        canopy_color = (34, 139, 34)  # Forest green
+        dark_canopy = (20, 100, 20)  # Darker green for depth
+        
+        # Draw trunk
+        trunk_x = int(screen_x - tree['trunk_width'] // 2)
+        trunk_y = int(screen_y - tree['height'])
+        trunk_rect = pygame.Rect(trunk_x, trunk_y, tree['trunk_width'], tree['height'])
+        pygame.draw.rect(screen, trunk_color, trunk_rect)
+        
+        # Draw canopy (3 overlapping circles for fuller look)
+        canopy_y = int(screen_y - tree['height'] + 20)
+        radius = tree['canopy_radius']
+        
+        # Left circle
+        pygame.draw.circle(screen, dark_canopy, 
+                         (int(screen_x - radius // 2), canopy_y), radius)
+        # Right circle
+        pygame.draw.circle(screen, dark_canopy, 
+                         (int(screen_x + radius // 2), canopy_y), radius)
+        # Center circle (lighter, on top)
+        pygame.draw.circle(screen, canopy_color, 
+                         (int(screen_x), canopy_y - 10), radius)
+    
     def remove_boss_tiles(self):
         """Remove all removable tiles after boss is defeated."""
         if not self.boss_defeated:
@@ -221,6 +309,20 @@ class Level:
         """Draw the entire level to the screen with camera offset (no visibility culling)."""
         # Draw background
         screen.fill(self.background_color)
+        
+        # Draw background ground with parallax effect (same as trees)
+        parallax_factor = 0.4
+        vertical_offset = - 20  # Lift background to show distance
+        self.draw_background_ground(screen, camera_x, camera_y, parallax_factor)
+        
+        # Draw trees with parallax effect (0.4x camera speed for depth)
+        for tree in self.trees:
+            tree_screen_x = tree['x'] - (camera_x * parallax_factor)
+            tree_screen_y = tree['y'] - camera_y + vertical_offset
+            
+            # Only draw if tree is within reasonable bounds
+            if -200 < tree_screen_x < screen.get_width() + 200:
+                self.draw_tree(screen, tree_screen_x, tree_screen_y, tree)
 
         # Decorations
         for decoration in self.decorations:
@@ -229,9 +331,17 @@ class Level:
             screen_y = pos_y - camera_y
             if decoration['type'] == 'cloud':
                 size = decoration['size']
-                pygame.draw.circle(screen, decoration['color'], (screen_x + size//2, screen_y + size//3), size//3)
-                pygame.draw.circle(screen, decoration['color'], (screen_x + size//4, screen_y + size//2), size//4)
-                pygame.draw.circle(screen, decoration['color'], (screen_x + size*3//4, screen_y + size//2), size//4)
+                # Draw larger clouds with varied colors (white to grayish-white)
+                # Base layer (larger circles)
+                pygame.draw.circle(screen, (240, 240, 240), (screen_x + size//2, screen_y + size//2), size//2)
+                pygame.draw.circle(screen, (230, 230, 230), (screen_x + size//4, screen_y + size//2 + 5), size//3)
+                pygame.draw.circle(screen, (250, 250, 250), (screen_x + size*3//4, screen_y + size//2 + 5), size//3)
+                # Top layer (smaller circles for puffiness)
+                pygame.draw.circle(screen, (255, 255, 255), (screen_x + size//2, screen_y + size//3), size//3)
+                pygame.draw.circle(screen, (245, 245, 245), (screen_x + size//3, screen_y + size//2 - 5), size//4)
+                pygame.draw.circle(screen, (255, 255, 255), (screen_x + size*2//3, screen_y + size//2 - 5), size//4)
+                # Extra small puffs
+                pygame.draw.circle(screen, (250, 250, 250), (screen_x + size*5//6, screen_y + size//2), size//6)
             elif decoration['type'] == 'grass':
                 for i in range(3):
                     pygame.draw.line(screen, decoration['color'], (screen_x + i*3, screen_y), (screen_x + i*3, screen_y - 5), 2)
