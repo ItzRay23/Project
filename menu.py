@@ -53,10 +53,11 @@ class MainMenu:
         # Load title image
         self.title_image = None
         try:
-            self.title_image = pygame.image.load("assets/title.png").convert_alpha()
-            # Scale title image if needed
-            title_width = int(self.screen_width * 0.8)
-            title_height = int(self.title_image.get_height() * (title_width / self.title_image.get_width()))
+            self.title_image = pygame.image.load("assets/Title.png").convert_alpha()
+            # Scale title image to fill screen
+            title_width = int(self.screen_width)
+            title_height = int(self.title_image.get_height() * (title_width / self.title_image.get_width()) * 1.1)
+            
             self.title_image = pygame.transform.scale(self.title_image, (title_width, title_height))
         except:
             print("Warning: Could not load title image")
@@ -117,7 +118,7 @@ class MainMenu:
         # Draw title image if available
         if self.title_image:
             title_x = (self.screen_width - self.title_image.get_width()) // 2
-            title_y = 80
+            title_y = 0
             screen.blit(self.title_image, (title_x, title_y))
         else:
             # Fallback text title
@@ -411,6 +412,15 @@ class LevelSelect:
     
     def update(self):
         """Update level select state."""
+        # Reload progress to check for any changes
+        previous_progress = [level["unlocked"] for level in self.levels]
+        self.load_progress()
+        current_progress = [level["unlocked"] for level in self.levels]
+        
+        # If progress changed, recreate buttons with new colors
+        if previous_progress != current_progress:
+            self.create_level_buttons()
+        
         mouse_pos = pygame.mouse.get_pos()
         
         if self.show_confirmation:
