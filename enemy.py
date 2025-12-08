@@ -248,8 +248,8 @@ class BasicEnemy(Enemy):
     def setup_properties(self):
         """Set up basic enemy properties."""
         self.speed = 1
-        self.health = 1
-        self.max_health = 1
+        self.health = 4
+        self.max_health = 4
         self.damage = 1
         self.color = (255, 0, 0)  # Red
 
@@ -368,9 +368,9 @@ class AmbushEnemy(Enemy):
     def setup_properties(self):
         """Set up ambush enemy properties."""
         self.speed = 0  # No normal movement speed
-        self.health = 2
-        self.max_health = 2
-        self.damage = 2  # Higher damage since it's an ambush attack
+        self.health = 3
+        self.max_health = 3
+        self.damage = 1
         self.color = (139, 0, 139)  # Dark magenta
     
     def get_movement_behavior(self):
@@ -573,8 +573,8 @@ class JumpingEnemy(Enemy):
     def setup_properties(self):
         """Set up jumping enemy properties."""
         self.speed = 1.2  # Moderate speed
-        self.health = 1
-        self.max_health = 1
+        self.health = 3
+        self.max_health = 3
         self.damage = 1
         self.color = (0, 255, 255)  # Cyan
     
